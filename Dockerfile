@@ -16,6 +16,9 @@ RUN sed -i 's|http://archive.ubuntu.com|http://mirror.csclub.uwaterloo.ca|g' /et
     openssh-server \
     podman \
     uidmap \
+    fuse-overlayfs \
+    slirp4netns \
+    cni-plugins \
     nftables \
     sudo \
     # For convenience, install nano
@@ -87,6 +90,10 @@ RUN curl -fsSL https://deb.nodesource.com/setup_24.x | bash - && \
     /var/lib/apt/lists/* \
     /var/tmp/* \
     /tmp/*
+
+# Sub-uid ranges so rootless podman can run nested containers inside this container
+RUN echo 'ubuntu:100000:65536' > /etc/subuid && \
+    echo 'ubuntu:100000:65536' > /etc/subgid
 
 # systemd service files and pi-web config, kept as real files in the repo
 COPY systemd/pi-web-sessiond.service systemd/pi-web.service systemd/pi-home-init.service /etc/systemd/system/
