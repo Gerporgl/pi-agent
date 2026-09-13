@@ -14,11 +14,7 @@ RUN sed -i 's|http://archive.ubuntu.com|http://mirror.csclub.uwaterloo.ca|g' /et
     apt-get install -y --no-install-recommends \
     curl \
     openssh-server \
-    podman \
     uidmap \
-    passt \
-    fuse-overlayfs \
-    nftables \
     sudo \
     # For convenience, install nano
     nano \
