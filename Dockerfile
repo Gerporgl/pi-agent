@@ -16,9 +16,8 @@ RUN sed -i 's|http://archive.ubuntu.com|http://mirror.csclub.uwaterloo.ca|g' /et
     openssh-server \
     podman \
     uidmap \
+    passt \
     fuse-overlayfs \
-    slirp4netns \
-    cni-plugins \
     nftables \
     sudo \
     # For convenience, install nano
