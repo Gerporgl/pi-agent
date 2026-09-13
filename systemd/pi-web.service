@@ -1,0 +1,23 @@
+[Unit]
+Description=Pi Web UI Gateway (System-wide)
+After=network.target
+
+[Service]
+Type=simple
+# Force the service to execute as the unprivileged ubuntu user
+User=ubuntu
+Group=ubuntu
+WorkingDirectory=/home/ubuntu
+
+ExecStart=/usr/bin/pi-web-server
+
+Environment=HOME=/home/ubuntu
+Environment=NODE_ENV=production
+Environment=PI_WEB_DATA_DIR=/home/ubuntu/.pi-web
+Environment=PI_WEB_CONFIG=/etc/pi-web/config.js
+
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

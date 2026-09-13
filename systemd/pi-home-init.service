@@ -1,0 +1,12 @@
+[Unit]
+Description=Initialize empty unprivileged home volume mount
+Before=multi-user.target pi-web-sessiond.service
+DefaultDependencies=no
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/bin/bash -c 'if [ -z "$(ls -A /home/ubuntu | grep -v lost+found)" ]; then echo "Empty host volume detected. Seeding skeleton files..."; cp -a /opt/ubuntu_skeleton/. /home/ubuntu/; chown -R ubuntu:ubuntu /home/ubuntu; fi'
+
+[Install]
+WantedBy=sysinit.target

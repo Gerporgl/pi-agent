@@ -88,73 +88,14 @@ RUN curl -fsSL https://deb.nodesource.com/setup_24.x | bash - && \
     /var/tmp/* \
     /tmp/*
 
-RUN cat << 'EOF' > /etc/systemd/system/pi-web-sessiond.service
-[Unit]
-Description=Pi Web UI Session Daemon
-After=network.target
-
-[Service]
-Type=simple
-User=ubuntu
-Group=ubuntu
-WorkingDirectory=/home/ubuntu
-ExecStart=/usr/bin/pi-web-sessiond
-Environment=HOME=/home/ubuntu
-Environment=NODE_ENV=production
-Environment=PI_WEB_DATA_DIR=/home/ubuntu/.pi-web
-Restart=always
-RestartSec=3
-
-[Install]
-WantedBy=multi-user.target
-EOF
-
-RUN mkdir -p /etc/pi-web && echo '{"host": "0.0.0.0"}' > /etc/pi-web/config.js
-RUN cat << 'EOF' > /etc/systemd/system/pi-web.service
-[Unit]
-Description=Pi Web UI Gateway (System-wide)
-After=network.target
-
-[Service]
-Type=simple
-# Force the service to execute as the unprivileged ubuntu user
-User=ubuntu
-Group=ubuntu
-WorkingDirectory=/home/ubuntu
-
-ExecStart=/usr/bin/pi-web-server
-
-Environment=HOME=/home/ubuntu
-Environment=NODE_ENV=production
-Environment=PI_WEB_DATA_DIR=/home/ubuntu/.pi-web
-Environment=PI_WEB_CONFIG=/etc/pi-web/config.js
-
-Restart=always
-RestartSec=5
-
-[Install]
-WantedBy=multi-user.target
-EOF
+# systemd service files and pi-web config, kept as real files in the repo
+COPY systemd/pi-web-sessiond.service systemd/pi-web.service systemd/pi-home-init.service /etc/systemd/system/
+COPY etc/pi-web/config.js /etc/pi-web/config.js
 
 RUN npm config set logs-max 0 --global
 
 RUN mkdir -p /opt/ubuntu_skeleton && \
     cp -a /home/ubuntu/. /opt/ubuntu_skeleton/
-
-RUN cat << 'EOF' > /etc/systemd/system/pi-home-init.service
-[Unit]
-Description=Initialize empty unprivileged home volume mount
-Before=multi-user.target pi-web-sessiond.service
-DefaultDependencies=no
-
-[Service]
-Type=oneshot
-RemainAfterExit=yes
-ExecStart=/bin/bash -c 'if [ -z "$(ls -A /home/ubuntu | grep -v lost+found)" ]; then echo "Empty host volume detected. Seeding skeleton files..."; cp -a /opt/ubuntu_skeleton/. /home/ubuntu/; chown -R ubuntu:ubuntu /home/ubuntu; fi'
-
-[Install]
-WantedBy=sysinit.target
-EOF
 
 RUN systemctl enable pi-home-init.service pi-web-sessiond.service pi-web.service
 
