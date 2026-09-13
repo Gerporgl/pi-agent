@@ -78,6 +78,9 @@ RUN curl -fsSL https://deb.nodesource.com/setup_24.x | bash - && \
     touch /var/lib/systemd/linger/ubuntu && \
     touch /var/lib/systemd/linger/root && \
     npm install -g @jmfederico/pi-web --allow-scripts=node-pty && \
+    # Clean up build caches (npm cache + node-gyp headers downloaded for node-pty)
+    npm cache clean --force && \
+    rm -rf /root/.cache /root/.npm && \
     apt-get -y autoremove && \
     apt-get -y clean  && \
     rm -rf \
