@@ -35,6 +35,7 @@ RUN sed -i 's|http://archive.ubuntu.com|http://mirror.csclub.uwaterloo.ca|g' /et
     libssl-dev \
     # iproute2 for the networkd-based network stack (better ipv6 and dhcp support on proxmox/lxc)
     iproute2 && \
+    apt install -y podman && \
     # Install uv
     export UV_INSTALL_DIR="/usr/local/bin" && curl -LsSf https://astral.sh/uv/install.sh | sh && \
     uv python install && \
