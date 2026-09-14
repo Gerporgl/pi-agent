@@ -39,6 +39,7 @@ RUN sed -i 's|http://archive.ubuntu.com|http://mirror.csclub.uwaterloo.ca|g' /et
     # Install uv
     export UV_INSTALL_DIR="/usr/local/bin" && curl -LsSf https://astral.sh/uv/install.sh | sh && \
     uv python install && \
+    apt-get purge -y packagekit && \
     apt-get -y autoremove && \
     apt-get -y clean  && \
     rm -rf \
@@ -89,6 +90,14 @@ RUN curl -fsSL https://deb.nodesource.com/setup_24.x | bash - && \
 # systemd service files and pi-web config, kept as real files in the repo
 COPY systemd/pi-web-sessiond.service systemd/pi-web.service systemd/pi-home-init.service /etc/systemd/system/
 COPY etc/pi-web/config.js /etc/pi-web/config.js
+COPY --chmod=755 bin/init-ubuntu.sh /usr/local/bin/init-ubuntu
+
+# Listen on different ssh port, so that it can coexists with another ssh server on the same pasta network
+RUN mkdir -p /etc/systemd/system/ssh.socket.d && \
+    echo "[Socket]" > /etc/systemd/system/ssh.socket.d/listen.conf && \
+    echo "ListenStream=" >> /etc/systemd/system/ssh.socket.d/listen.conf && \
+    echo "ListenStream=0.0.0.0:2223" >> /etc/systemd/system/ssh.socket.d/listen.conf && \
+    echo "ListenStream=[::]:2223" >> /etc/systemd/system/ssh.socket.d/listen.conf
 
 RUN npm config set logs-max 0 --global
 

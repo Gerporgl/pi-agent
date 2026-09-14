@@ -4,9 +4,11 @@ Before=multi-user.target pi-web-sessiond.service
 DefaultDependencies=no
 
 [Service]
+User=root
+Group=root
 Type=oneshot
 RemainAfterExit=yes
-ExecStart=/bin/bash -c 'if [ -z "$(ls -A /home/ubuntu | grep -v lost+found)" ]; then echo "Empty host volume detected. Seeding skeleton files..."; cp -a /opt/ubuntu_skeleton/. /home/ubuntu/; chown -R ubuntu:ubuntu /home/ubuntu; fi'
+ExecStart=/usr/local/bin/init-ubuntu
 
 [Install]
 WantedBy=sysinit.target

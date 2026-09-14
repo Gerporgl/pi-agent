@@ -16,9 +16,7 @@ fi
 
 podman=$(podman -v 2>/dev/null | grep -c -i podman)
 if [ "$podman" == "1" ]; then
-    # Keeps the host user id the same inside the container for the mounted file system.
-    # There are other ways of doing this; it is optional.
-	opts="--userns=keep-id"
+	opts="--userns=keep-id:uid=1000,gid=1000"
 	command=podman
 	echo "You have podman installed"
     podman rm -fi $CONTAINER_NAME
@@ -48,12 +46,13 @@ read -s -p "Enter the desired root password: " root_password && echo ""
 echo "Ok"
 
 $command create --rm -it \
-    -p 0.0.0.0:8555:8504 \
-    -p 0.0.0.0:2222:22 \
+    -p 127.0.0.1:8504:8504 \
+    -p 127.0.0.1:2223:2223 \
     $opts \
-    -v `pwd`/home-data:/home/ubuntu \
+    -v `pwd`/home-data:/home/ubuntu:U \
     --name $CONTAINER_NAME \
     $IMAGE_NAME
+#    -v ~/.ssh/id_ed25519.pub:/root/.ssh/authorized_keys_host:ro \
 
 echo "Container created"
 
