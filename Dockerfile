@@ -1,6 +1,11 @@
 # Use ubuntu as base, it works best with lxc and systemd tty console and shutdown
 FROM ubuntu:26.04 
 
+# Versions passed as build args by build.sh (defaults are the current ones, so a plain `docker build .` still works)
+ARG NODE_MAJOR=24
+ARG PI_VERSION=0.85.1
+ARG PI_WEB_VERSION=1.202609.0
+
 USER root
 
 RUN sed -i 's|http://archive.ubuntu.com|http://mirror.csclub.uwaterloo.ca|g' /etc/apt/sources.list.d/ubuntu.sources && \
@@ -69,14 +74,14 @@ RUN sed -i 's|http://archive.ubuntu.com|http://mirror.csclub.uwaterloo.ca|g' /et
 
 
 # Install latest stable Node.js system-wide (NodeSource), available globally to all users
-RUN curl -fsSL https://deb.nodesource.com/setup_24.x | bash - && \
+RUN curl -fsSL https://deb.nodesource.com/setup_${NODE_MAJOR}.x | bash - && \
     apt-get install -y nodejs && \
     node --version && npm --version && \
-    npm install -g --ignore-scripts @earendil-works/pi-coding-agent && \
+    npm install -g --ignore-scripts @earendil-works/pi-coding-agent@${PI_VERSION} && \
     mkdir -p /var/lib/systemd/linger && \
     touch /var/lib/systemd/linger/ubuntu && \
     touch /var/lib/systemd/linger/root && \
-    npm install -g @jmfederico/pi-web --allow-scripts=node-pty && \
+    npm install -g @jmfederico/pi-web@${PI_WEB_VERSION} --allow-scripts=node-pty && \
     # Clean up build caches (npm cache + node-gyp headers downloaded for node-pty)
     npm cache clean --force && \
     rm -rf /root/.cache /root/.npm && \
