@@ -94,12 +94,20 @@ RUN curl -fsSL https://deb.nodesource.com/setup_${NODE_MAJOR}.x | bash - && \
     /var/tmp/* \
     /tmp/*
 
-# Install Rust toolchain system-wide from the official standalone package
+# Install Rust toolchain system-wide from the official standalone package,
+# including the musl target for building fully static, libc-independent binaries
+# (the musl target is self-contained: it bundles its own static musl libc,
+# so no distro musl packages are needed)
 RUN curl -sSfLO "https://static.rust-lang.org/dist/rust-${RUST_VERSION}-${TARGET_ARCH}.tar.gz" && \
+    curl -sSfLO "https://static.rust-lang.org/dist/rust-std-${RUST_VERSION}-${TARGET_ARCH%-gnu}-musl.tar.gz" && \
     tar -xzf "rust-${RUST_VERSION}-${TARGET_ARCH}.tar.gz" && \
+    tar -xzf "rust-std-${RUST_VERSION}-${TARGET_ARCH%-gnu}-musl.tar.gz" && \
     "./rust-${RUST_VERSION}-${TARGET_ARCH}/install.sh" --prefix=/usr/local && \
-    rm -rf "rust-${RUST_VERSION}-${TARGET_ARCH}" "rust-${RUST_VERSION}-${TARGET_ARCH}.tar.gz" && \
-    rustc --version && cargo --version
+    "./rust-std-${RUST_VERSION}-${TARGET_ARCH%-gnu}-musl/install.sh" --prefix=/usr/local && \
+    rm -rf "rust-${RUST_VERSION}-${TARGET_ARCH}" "rust-${RUST_VERSION}-${TARGET_ARCH}.tar.gz" \
+           "rust-std-${RUST_VERSION}-${TARGET_ARCH%-gnu}-musl" "rust-std-${RUST_VERSION}-${TARGET_ARCH%-gnu}-musl.tar.gz" && \
+    rustc --version && cargo --version && \
+    ls "/usr/local/lib/rustlib/${TARGET_ARCH%-gnu}-musl/lib" | grep -q '\.rlib$'
 
 # systemd service files and pi-web config, kept as real files in the repo
 COPY systemd/pi-web-sessiond.service systemd/pi-web.service systemd/pi-home-init.service /etc/systemd/system/
