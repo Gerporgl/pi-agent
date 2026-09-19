@@ -2,6 +2,20 @@
 
 set -e
 
+# Options:
+#   --build-ghcr  skip the build if the resolved tag already exists on ghcr.io
+#                 (removes the version .txt files so callers can detect the skip)
+#   --force       with --build-ghcr, build even if the tag already exists
+BUILD_GHCR=0
+FORCE=0
+for arg in "$@"; do
+	case "$arg" in
+		--build-ghcr) BUILD_GHCR=1 ;;
+		--force) FORCE=1 ;;
+		*) echo "ERROR: unknown option: $arg (usage: ./build.sh [--build-ghcr] [--force])"; exit 1 ;;
+	esac
+done
+
 # Container tool: podman by default, docker otherwise; CT_TOOL overrides
 command=docker
 if command -v podman >/dev/null 2>&1; then
@@ -48,14 +62,37 @@ echo "pi_web_version=$pi_web_version"
 echo "rust_version=$rust_version"
 echo "target_arch=$target_arch"
 
+tag="node-${node_major}-pi-${pi_version}-pi-web-${pi_web_version}-rust-${rust_version}"
+echo "tag=pi-agent:$tag"
+
+# For --build-ghcr: never re-push a same-tag image with different content,
+# so skip the build entirely if this exact tag is already published on ghcr.io
+if [ "$BUILD_GHCR" == "1" ] && [ "$FORCE" != "1" ]; then
+	# Resolve the ghcr.io package owner from the git origin remote (git@github.com:Owner/repo.git)
+	owner=$(git remote get-url origin 2>/dev/null \
+		| sed -E 's|^git@github\.com:|https://github.com/|' \
+		| sed -E 's|https?://github\.com/([^/]+)/.*$|\1|')
+	if [ -z "$owner" ]; then
+		echo "ERROR: cannot determine ghcr.io owner from git origin remote"
+		exit 1
+	fi
+	owner=$(echo "$owner" | tr 'A-Z' 'a-z')
+	token=$(curl -fsS "https://ghcr.io/token?scope=repository:$owner/pi-agent:pull" | jq -r .token)
+	if curl -fsS -o /dev/null -H "Authorization: Bearer $token" \
+			 -H "Accept: application/vnd.docker.distribution.manifest.v2+json, application/vnd.oci.image.manifest.v1+json" \
+			 "https://ghcr.io/v2/$owner/pi-agent/manifests/$tag"; then
+		echo "Tag ghcr.io/$owner/pi-agent:$tag already exists on ghcr.io, skipping build"
+		rm -f node_version.txt pi_version.txt pi_web_version.txt rust_version.txt pi_agent_tag.txt
+		exit 0
+	fi
+fi
+
 # Store the versions and the tag in .txt files for later use
 echo "$node_major" > node_version.txt
 echo "$pi_version" > pi_version.txt
 echo "$pi_web_version" > pi_web_version.txt
 echo "$rust_version" > rust_version.txt
-tag="node-${node_major}-pi-${pi_version}-pi-web-${pi_web_version}-rust-${rust_version}"
 echo "$tag" > pi_agent_tag.txt
-echo "tag=pi-agent:$tag"
 
 # Build args only change when one of the components was updated,
 # so cached layers are reused otherwise.
