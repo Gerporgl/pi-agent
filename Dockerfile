@@ -1,6 +1,11 @@
 # Use ubuntu as base, it works best with lxc and systemd tty console and shutdown
 FROM ubuntu:26.04 
 
+# Clear the OCI metadata inherited from the base image (the long Canonical
+# description otherwise shows up in the ghcr.io page header)
+LABEL org.opencontainers.image.description="" \
+      org.opencontainers.image.title=""
+
 # Versions passed as build args by build.sh (defaults are the current ones, so a plain `docker build .` still works)
 ARG NODE_MAJOR=24
 ARG PI_VERSION=0.85.1
