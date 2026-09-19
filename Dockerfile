@@ -15,14 +15,26 @@ ARG TARGET_ARCH=x86_64-unknown-linux-gnu
 
 USER root
 
+RUN rm -f /etc/dpkg/dpkg.cfg.d/excludes
+
+# 2. Forcefully remove Ubuntu's fake man script diversion
+RUN if [ -f /usr/bin/man.REAL ] || dpkg-divert --list /usr/bin/man | grep -q "man.REAL"; then \
+        rm -f /usr/bin/man && \
+        dpkg-divert --remove /usr/bin/man; \
+    fi
+
+
 RUN sed -i 's|http://archive.ubuntu.com|http://mirror.csclub.uwaterloo.ca|g' /etc/apt/sources.list.d/ubuntu.sources && \
     sed -i 's|http://security.ubuntu.com|http://mirror.csclub.uwaterloo.ca|g' /etc/apt/sources.list.d/ubuntu.sources && \
     cat /etc/apt/sources.list.d/ubuntu.sources && \
     apt-get update && \
-    apt-get remove -y unminimize && \
+    apt-get purge -y unminimize && \
     apt-get install -y --no-install-recommends \ 
     ca-certificates \
     software-properties-common && \
+    apt-get install -y --reinstall -y \
+    man-db manpages manpages-posix \
+    coreutils && \
     apt-get install -y --no-install-recommends \
     curl \
     openssh-server \
