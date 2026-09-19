@@ -2,13 +2,15 @@
 
 set -e
 
-podman=$(podman -v 2>/dev/null | grep -c -i podman)
-if [ "$podman" == "1" ]; then
+# Container tool: podman by default, docker otherwise; CT_TOOL overrides
+command=docker
+if command -v podman >/dev/null 2>&1; then
 	command=podman
-else
-	command=docker
-	echo "You are using docker, this container has been tested mostly with podman"
 fi
+if [ -n "${CT_TOOL:-}" ]; then
+	command=$CT_TOOL
+fi
+echo "Using container tool: $command"
 
 # --- Dynamically fetch the latest versions ---
 
