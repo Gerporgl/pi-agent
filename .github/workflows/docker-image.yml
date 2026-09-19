@@ -23,24 +23,19 @@ jobs:
     steps:
     - uses: actions/checkout@v4
     - name: Build the Docker image
-      id: build
       run: |
         if [ "${{ inputs.force }}" == "true" ]; then
           CT_TOOL=docker ./build.sh --build-ghcr --force
         else
           CT_TOOL=docker ./build.sh --build-ghcr
         fi
-        # build.sh removes the .txt files when it skips, so their presence means we built
-        if [ -f pi_agent_tag.txt ]; then
-          echo "built=true" >> "$GITHUB_STEP_OUTPUT"
-        else
-          echo "built=false" >> "$GITHUB_STEP_OUTPUT"
-        fi
+    # build.sh removes pi_agent_tag.txt when it skips, so the push steps
+    # silently skip in that case
     - name: Log in to registry
-      if: steps.build.outputs.built == 'true'
+      if: ${{ hashFiles('pi_agent_tag.txt') != '' }}
       run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
     - name: Push image
-      if: steps.build.outputs.built == 'true'
+      if: ${{ hashFiles('pi_agent_tag.txt') != '' }}
       run: |
         TAG=$(cat pi_agent_tag.txt)
         IMAGE_ID=ghcr.io/${{ github.repository_owner }}/$IMAGE_NAME
