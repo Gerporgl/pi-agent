@@ -5,6 +5,8 @@ FROM ubuntu:26.04
 ARG NODE_MAJOR=24
 ARG PI_VERSION=0.85.1
 ARG PI_WEB_VERSION=1.202609.0
+ARG RUST_VERSION=1.98.1
+ARG TARGET_ARCH=x86_64-unknown-linux-gnu
 
 USER root
 
@@ -91,6 +93,13 @@ RUN curl -fsSL https://deb.nodesource.com/setup_${NODE_MAJOR}.x | bash - && \
     /var/lib/apt/lists/* \
     /var/tmp/* \
     /tmp/*
+
+# Install Rust toolchain system-wide from the official standalone package
+RUN curl -sSfLO "https://static.rust-lang.org/dist/rust-${RUST_VERSION}-${TARGET_ARCH}.tar.gz" && \
+    tar -xzf "rust-${RUST_VERSION}-${TARGET_ARCH}.tar.gz" && \
+    "./rust-${RUST_VERSION}-${TARGET_ARCH}/install.sh" --prefix=/usr/local && \
+    rm -rf "rust-${RUST_VERSION}-${TARGET_ARCH}" "rust-${RUST_VERSION}-${TARGET_ARCH}.tar.gz" && \
+    rustc --version && cargo --version
 
 # systemd service files and pi-web config, kept as real files in the repo
 COPY systemd/pi-web-sessiond.service systemd/pi-web.service systemd/pi-home-init.service /etc/systemd/system/
