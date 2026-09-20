@@ -4,13 +4,13 @@ After=network.target
 
 [Service]
 Type=simple
-User=ubuntu
-Group=ubuntu
-WorkingDirectory=/home/ubuntu
+User=agent
+Group=agent
+WorkingDirectory=/home/agent
 ExecStart=/usr/bin/pi-web-sessiond
-Environment=HOME=/home/ubuntu
+Environment=HOME=/home/agent
 Environment=NODE_ENV=production
-Environment=PI_WEB_DATA_DIR=/home/ubuntu/.pi-web
+Environment=PI_WEB_DATA_DIR=/home/agent/.pi-web
 Restart=always
 RestartSec=3
 

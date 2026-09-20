@@ -88,11 +88,21 @@ RUN sed -i 's|http://archive.ubuntu.com|http://mirror.csclub.uwaterloo.ca|g' /et
     rm /usr/lib/systemd/system/dpkg-db-backup.timer && \
     rm /usr/lib/systemd/system/e2scrub_all.timer && \
     rm /usr/lib/systemd/system/fstrim.timer && \
-    rm /lib/systemd/system/motd-news.timer && \
-    mkdir -p /home/ubuntu/.ssh && chown ubuntu:ubuntu /home/ubuntu/.ssh && \
+    rm /lib/systemd/system/motd-news.timer
+
+# Rename the default ubuntu user to agent (keeping uid/gid 1000), rename the
+# matching group, and drop the secondary groups that are irrelevant in a
+# container (sudo, cdrom, floppy, adm, dialout, audio, dip, video, plugdev).
+# Rootless podman only needs the subuid/subgid ranges, so those are kept (renamed).
+RUN usermod -l agent -d /home/agent -m -c "Agent" ubuntu && \
+    groupmod -n agent ubuntu && \
+    usermod -G "" agent && \
+    sed -i 's/^ubuntu:/agent:/' /etc/subuid /etc/subgid
+
+RUN mkdir -p /home/agent/.ssh && chown agent:agent /home/agent/.ssh && \
     sed -i -e '2iTERM=xterm-color\\' /root/.profile && \
-    cp /root/.profile /home/ubuntu/.profile && \
-    cp /root/.bashrc /home/ubuntu/.bashrc 
+    cp /root/.profile /home/agent/.profile && \
+    cp /root/.bashrc /home/agent/.bashrc
 
 
 # Install latest stable Node.js system-wide (NodeSource), available globally to all users
@@ -106,7 +116,7 @@ RUN case "${TARGET_ARCH}" in \
     node --version && npm --version && \
     npm install -g --ignore-scripts @earendil-works/pi-coding-agent@${PI_VERSION} && \
     mkdir -p /var/lib/systemd/linger && \
-    touch /var/lib/systemd/linger/ubuntu && \
+    touch /var/lib/systemd/linger/agent && \
     touch /var/lib/systemd/linger/root && \
     npm install -g @jmfederico/pi-web@${PI_WEB_VERSION} --allow-scripts=node-pty && \
     # pi-coding-agent ships an npm-shrinkwrap.json that pins esbuild binaries for
@@ -147,7 +157,7 @@ RUN curl -sSfLO "https://static.rust-lang.org/dist/rust-${RUST_VERSION}-${TARGET
 # systemd service files and pi-web config, kept as real files in the repo
 COPY systemd/pi-web-sessiond.service systemd/pi-web.service systemd/pi-home-init.service /etc/systemd/system/
 COPY etc/pi-web/config.js /etc/pi-web/config.js
-COPY --chmod=755 bin/init-ubuntu.sh /usr/local/bin/init-ubuntu
+COPY --chmod=755 bin/init-agent.sh /usr/local/bin/init-agent
 
 # Listen on different ssh port, so that it can coexists with another ssh server on the same pasta network
 RUN mkdir -p /etc/systemd/system/ssh.socket.d && \
@@ -156,8 +166,8 @@ RUN mkdir -p /etc/systemd/system/ssh.socket.d && \
     echo "ListenStream=0.0.0.0:2223" >> /etc/systemd/system/ssh.socket.d/listen.conf && \
     echo "ListenStream=[::]:2223" >> /etc/systemd/system/ssh.socket.d/listen.conf
 
-RUN mkdir -p /opt/ubuntu_skeleton && \
-    cp -a /home/ubuntu/. /opt/ubuntu_skeleton/
+RUN mkdir -p /opt/agent-home-skeleton && \
+    cp -a /home/agent/. /opt/agent-home-skeleton/
 
 RUN systemctl enable pi-home-init.service pi-web-sessiond.service pi-web.service
 

@@ -1,13 +1,13 @@
 #!/bin/bash
 
-if [ -z "$(ls -A /home/ubuntu | grep -v lost+found)" ]; then
+if [ -z "$(ls -A /home/agent | grep -v lost+found)" ]; then
     echo "Empty host volume detected. Seeding skeleton files..."
-    cp -a /opt/ubuntu_skeleton/. /home/ubuntu/
+    cp -a /opt/agent-home-skeleton/. /home/agent/
 else
-    echo "Ubuntu home folder already initilized."
+    echo "Agent home folder already initialized."
 fi
 
-chown -R ubuntu:ubuntu /home/ubuntu
+chown -R agent:agent /home/agent
 
 if [ -f  /root/.ssh/authorized_keys_host ]; then
     echo "Copying host ssh public key to root user"

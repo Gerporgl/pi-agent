@@ -49,7 +49,7 @@ $command create --rm -it \
     -p 127.0.0.1:8504:8504 \
     -p 127.0.0.1:2223:2223 \
     $opts \
-    -v `pwd`/home-data:/home/ubuntu:U \
+    -v `pwd`/home-data:/home/agent:U \
     --name $CONTAINER_NAME \
     $IMAGE_NAME
 #    -v ~/.ssh/id_ed25519.pub:/root/.ssh/authorized_keys_host:ro \

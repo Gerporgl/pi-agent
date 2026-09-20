@@ -8,7 +8,7 @@ User=root
 Group=root
 Type=oneshot
 RemainAfterExit=yes
-ExecStart=/usr/local/bin/init-ubuntu
+ExecStart=/usr/local/bin/init-agent
 
 [Install]
 WantedBy=sysinit.target

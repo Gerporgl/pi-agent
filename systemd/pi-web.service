@@ -6,16 +6,16 @@ Requires=pi-web-sessiond.service
 
 [Service]
 Type=simple
-# Force the service to execute as the unprivileged ubuntu user
-User=ubuntu
-Group=ubuntu
-WorkingDirectory=/home/ubuntu
+# Force the service to execute as the unprivileged agent user
+User=agent
+Group=agent
+WorkingDirectory=/home/agent
 
 ExecStart=/usr/bin/pi-web-server
 
-Environment=HOME=/home/ubuntu
+Environment=HOME=/home/agent
 Environment=NODE_ENV=production
-Environment=PI_WEB_DATA_DIR=/home/ubuntu/.pi-web
+Environment=PI_WEB_DATA_DIR=/home/agent/.pi-web
 Environment=PI_WEB_CONFIG=/etc/pi-web/config.js
 
 Restart=always
