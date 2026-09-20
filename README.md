@@ -43,7 +43,7 @@ If your persistent home folder was created with an older image (when the user wa
 ./migrate.sh ./pi-agent-home              # add --dry-run to preview without changes
 ```
 
-It renames pi session directories under `.pi/agent/sessions/` (`--home-ubuntu-*` → `--home-agent-*`) and rewrites `/home/ubuntu` → `/home/agent` in the pi / pi-web state files (`trust.json`, `projects.json`, `archived-sessions.json`, `session-unread.json`, `sessiond-owner.json`). Session discussion files (`*.jsonl`) are left untouched, and the script refuses to run against the agent's own live home.
+It renames pi session directories under `.pi/agent/sessions/` (`--home-ubuntu-*` → `--home-agent-*`), rewrites `/home/ubuntu` → `/home/agent` in the pi / pi-web state files (`trust.json`, `projects.json`, `archived-sessions.json`, `session-unread.json`, `sessiond-owner.json`), and updates the session header (first line) of each `*.jsonl` so its `cwd` matches the new project path — pi matches sessions to projects by that header field. The conversation lines inside `*.jsonl` files are left untouched. The script is idempotent (safe to re-run, e.g. to finish a partially completed migration) and refuses to run against the agent's own live home.
 
 ## Notes
 

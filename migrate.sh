@@ -20,8 +20,11 @@
 #        .pi-web/archived-sessions.json
 #        .pi-web/session-unread.json
 #        .pi-web/sessiond-owner.json
-#   3. Does NOT touch session discussion files (*.jsonl): neither the files
-#      under .pi/agent/sessions/**/ nor .pi-web/archived-sessions/*.jsonl.
+#   3. Updates the session header (first line) of each .jsonl under
+#      .pi/agent/sessions/**/ and .pi-web/archived-sessions/ so its cwd
+#      matches the new path. Only the header line is rewritten; the
+#      conversation lines (messages, system prompts, compaction summaries)
+#      are left byte-identical.
 #
 # Workspaces do not need separate handling: pi-web derives them at runtime from
 # the project paths in .pi-web/projects.json (project root + git worktrees).
@@ -158,7 +161,46 @@ for rel in "${CLEAN[@]:-}"; do
 done
 echo
 
-# --- 3) Verification: what old references remain ----------------------------
+# --- 3) Update the session header (line 1) of each .jsonl ------------------
+# pi matches a session to a project by the exact cwd in the header (line 1).
+# Only line 1 is rewritten, and only when it is the session header and still
+# contains the old path. Every conversation line stays byte-identical.
+
+JSONL_DIRS=()
+[ -d "$SESSIONS_DIR" ] && JSONL_DIRS+=("$SESSIONS_DIR")
+ARCHIVE_DIR="$TARGET/.pi-web/archived-sessions"
+[ -d "$ARCHIVE_DIR" ] && JSONL_DIRS+=("$ARCHIVE_DIR")
+
+JSONL_UPDATED=()
+JSONL_CLEAN=()
+while IFS= read -r f; do
+    [ -f "$f" ] || continue
+    first="$(head -n 1 "$f" 2>/dev/null || true)"
+    if printf '%s' "$first" | grep -q '"type":"session"' \
+       && printf '%s' "$first" | grep -q -e "$OLD_HOME" -e "$OLD_SAFE"; then
+        if [ "$DRY_RUN" = 0 ]; then
+            sed -i -e "1s|$OLD_HOME|$NEW_HOME|g" -e "1s|$OLD_SAFE|$NEW_SAFE|g" "$f"
+        fi
+        JSONL_UPDATED+=("$f")
+    else
+        JSONL_CLEAN+=("$f")
+    fi
+done < <(for d in "${JSONL_DIRS[@]:-}"; do
+            [ -n "$d" ] && find "$d" -name '*.jsonl' -type f
+         done | sort)
+
+echo "Session headers (line 1 of .jsonl):"
+if [ "$DRY_RUN" = 1 ]; then
+    echo "  [dry-run] would update:"
+fi
+for f in "${JSONL_UPDATED[@]:-}"; do
+    [ -n "$f" ] && echo "  $f"
+done
+echo
+echo "Session headers already clean (no old path): ${#JSONL_CLEAN[@]}"
+echo
+
+# --- 4) Verification: what old references remain ----------------------------
 
 echo "Remaining '$OLD_HOME' references outside *.jsonl:"
 LEFTOVER="$(grep -r -l -e "$OLD_HOME" -e "$OLD_SAFE" "$TARGET" \
@@ -169,9 +211,10 @@ else
     echo "  (none)"
 fi
 echo
-echo "Note: *.jsonl session discussion files were intentionally left untouched."
-echo "      Their first line (session header) still records the old cwd; pi-web"
-echo "      may show such sessions under the old path, but they remain loadable."
+echo "Note: only the first line (session header) of each .jsonl was updated so its"
+echo "      cwd matches the new project path. The conversation lines (user/agent"
+echo "      messages, system prompts, compaction summaries) still contain"
+echo "      '$OLD_HOME' as history and were intentionally left untouched."
 echo
 
 if [ "$DRY_RUN" = 1 ]; then
