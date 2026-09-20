@@ -1,6 +1,8 @@
 [Unit]
 Description=Pi Web UI Gateway (System-wide)
 After=network.target
+After=pi-web-sessiond.service
+Requires=pi-web-sessiond.service
 
 [Service]
 Type=simple
