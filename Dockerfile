@@ -69,7 +69,10 @@ RUN sed -i 's|http://archive.ubuntu.com|http://mirror.csclub.uwaterloo.ca|g' /et
     rm -rf \
     /var/lib/apt/lists/* \
     /var/tmp/* \
-    /tmp/* && \
+    /tmp/* \
+    # Test binaries shipped with podman/buildah, only used by their own test suites
+    /usr/libexec/buildah/tutorial /usr/libexec/buildah/imgtype /usr/libexec/buildah/copy \
+    /usr/libexec/podman/podman-testing && \
     # Remove clutter messages on login
     rm /etc/update-motd.d/10* && rm /etc/update-motd.d/50* && rm /etc/update-motd.d/60* && \
     # Enable some service and remove a bunch of unwanted automatic timers
@@ -93,7 +96,12 @@ RUN sed -i 's|http://archive.ubuntu.com|http://mirror.csclub.uwaterloo.ca|g' /et
 
 
 # Install latest stable Node.js system-wide (NodeSource), available globally to all users
-RUN curl -fsSL https://deb.nodesource.com/setup_${NODE_MAJOR}.x | bash - && \
+RUN case "${TARGET_ARCH}" in \
+        x86_64*) esb_platform=linux-x64 ;; \
+        aarch64*) esb_platform=linux-arm64 ;; \
+        *) esb_platform=linux-x64 ;; \
+    esac && \
+    curl -fsSL https://deb.nodesource.com/setup_${NODE_MAJOR}.x | bash - && \
     apt-get install -y nodejs && \
     node --version && npm --version && \
     npm install -g --ignore-scripts @earendil-works/pi-coding-agent@${PI_VERSION} && \
@@ -101,6 +109,15 @@ RUN curl -fsSL https://deb.nodesource.com/setup_${NODE_MAJOR}.x | bash - && \
     touch /var/lib/systemd/linger/ubuntu && \
     touch /var/lib/systemd/linger/root && \
     npm install -g @jmfederico/pi-web@${PI_WEB_VERSION} --allow-scripts=node-pty && \
+    # pi-coding-agent ships an npm-shrinkwrap.json that pins esbuild binaries for
+    # every platform, and npm honors a bundled shrinkwrap verbatim (no platform
+    # filtering), so prune all esbuild platform packages except the native one
+    for d in $(find /usr/lib/node_modules -type d -name "@esbuild"); do \
+        for p in "$d"/*/; do \
+            [ "$(basename "$p")" = "$esb_platform" ] || rm -rf "$p"; \
+        done; \
+    done && \
+    npm config set logs-max 0 --global && \
     # Clean up build caches (npm cache + node-gyp headers downloaded for node-pty)
     npm cache clean --force && \
     rm -rf /root/.cache /root/.npm && \
@@ -119,7 +136,8 @@ RUN curl -sSfLO "https://static.rust-lang.org/dist/rust-${RUST_VERSION}-${TARGET
     curl -sSfLO "https://static.rust-lang.org/dist/rust-std-${RUST_VERSION}-${TARGET_ARCH%-gnu}-musl.tar.gz" && \
     tar -xzf "rust-${RUST_VERSION}-${TARGET_ARCH}.tar.gz" && \
     tar -xzf "rust-std-${RUST_VERSION}-${TARGET_ARCH%-gnu}-musl.tar.gz" && \
-    "./rust-${RUST_VERSION}-${TARGET_ARCH}/install.sh" --prefix=/usr/local && \
+    # Skip the docs components (rust-docs is ~610MB of HTML, rust-docs-json is ~19MB)
+    "./rust-${RUST_VERSION}-${TARGET_ARCH}/install.sh" --prefix=/usr/local --without=rust-docs,rust-docs-json-preview && \
     "./rust-std-${RUST_VERSION}-${TARGET_ARCH%-gnu}-musl/install.sh" --prefix=/usr/local && \
     rm -rf "rust-${RUST_VERSION}-${TARGET_ARCH}" "rust-${RUST_VERSION}-${TARGET_ARCH}.tar.gz" \
            "rust-std-${RUST_VERSION}-${TARGET_ARCH%-gnu}-musl" "rust-std-${RUST_VERSION}-${TARGET_ARCH%-gnu}-musl.tar.gz" && \
@@ -137,8 +155,6 @@ RUN mkdir -p /etc/systemd/system/ssh.socket.d && \
     echo "ListenStream=" >> /etc/systemd/system/ssh.socket.d/listen.conf && \
     echo "ListenStream=0.0.0.0:2223" >> /etc/systemd/system/ssh.socket.d/listen.conf && \
     echo "ListenStream=[::]:2223" >> /etc/systemd/system/ssh.socket.d/listen.conf
-
-RUN npm config set logs-max 0 --global
 
 RUN mkdir -p /opt/ubuntu_skeleton && \
     cp -a /home/ubuntu/. /opt/ubuntu_skeleton/
