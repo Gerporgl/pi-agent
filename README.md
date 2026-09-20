@@ -2,6 +2,8 @@
 
 A minimal Ubuntu 26.04 container that runs the [pi coding agent](https://www.npmjs.com/package/@earendil-works/pi-coding-agent) and [pi-web](https://www.npmjs.com/package/@jmfederico/pi-web) inside a full containerized sandbox.
 
+The entire container project was coded mostly by the pi agent itself (which also runs within it by itself and edit its own container based on given instructions...). The model used (at the time of writing) is [ISTA-DASLab/Qwen3.8-27B-GSQ-RCO-GGUF:IQ3_S](https://huggingface.co/ISTA-DASLab/Qwen3.8-27B-GSQ-RCO-GGUF) (mtp), running on a 16GB vram amdgpu (9060XT) and fitting a 64K context size at kv q8 (providing around ~20 tokens/sec). This is all hosted on a proxmox server running on different lxc nested containers. The llama.cpp inference engine is hosted using this sibling container project: [llama-lxc](https://github.com/Gerporgl/llama-lxc) which is also hosted on the same proxmox host in a separate lxc container, and passing the amdgpu. All of this running in unprivileged mode.
+
 ## Design
 
 - **Base**: Ubuntu 26.04 with a minimal set of CLI tools the agent can use (git, ripgrep, build-essential, jq, yq, etc.).
