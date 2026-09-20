@@ -162,6 +162,9 @@ RUN curl -sSfLO "https://static.rust-lang.org/dist/rust-${RUST_VERSION}-${TARGET
 
 # Install Godot engine system-wide (headless-capable). The binary is nearly
 # static; its runtime dlopens (fontconfig, vulkan) are covered by the apt layer.
+# The real binary goes to /usr/local/lib/godot/godot; /usr/local/bin/godot is a
+# wrapper (bin/godot-wrapper.sh) that auto-adds --headless when no display
+# server is available, so MCP run_project and CI work on headless machines.
 RUN case "${TARGET_ARCH}" in \
         x86_64*) godot_arch=x86_64 ;; \
         aarch64*) godot_arch=arm64 ;; \
@@ -169,9 +172,11 @@ RUN case "${TARGET_ARCH}" in \
     esac && \
     curl -fsSLO "https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}-stable/Godot_v${GODOT_VERSION}-stable_linux.${godot_arch}.zip" && \
     unzip -q "Godot_v${GODOT_VERSION}-stable_linux.${godot_arch}.zip" && \
-    install -m 755 "Godot_v${GODOT_VERSION}-stable_linux.${godot_arch}" /usr/local/bin/godot && \
-    rm -f "Godot_v${GODOT_VERSION}-stable_linux.${godot_arch}" "Godot_v${GODOT_VERSION}-stable_linux.${godot_arch}.zip" && \
-    godot --version
+    mkdir -p /usr/local/lib/godot && \
+    install -m 755 "Godot_v${GODOT_VERSION}-stable_linux.${godot_arch}" /usr/local/lib/godot/godot && \
+    rm -f "Godot_v${GODOT_VERSION}-stable_linux.${godot_arch}" "Godot_v${GODOT_VERSION}-stable_linux.${godot_arch}.zip"
+COPY --chmod=755 bin/godot-wrapper.sh /usr/local/bin/godot
+RUN godot --version
 
 # Install the Godot MCP server and the pi MCP adapter system-wide (global npm,
 # shared by all users). pi loads the adapter from this global path via the

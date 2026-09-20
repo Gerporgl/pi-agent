@@ -27,6 +27,8 @@ Tool names are prefixed with the server name (`godot_`).
 - `export_mesh_library` — export a 3D scene as a MeshLibrary resource (GridMap)
 - `get_uid` / `update_project_uids` — resource UID management (Godot 4.4+)
 
+Note: `/usr/local/bin/godot` is a wrapper that auto-adds `--headless` when no display server is available, so plain `godot --path <project>` works on headless machines (and `run_project` works through the MCP server).
+
 ## Fallback: direct CLI
 
 For tasks the MCP tools do not cover (import, export templates, custom flags), use the binary directly:
