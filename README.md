@@ -8,7 +8,7 @@ A minimal Ubuntu 26.04 container that runs the [pi coding agent](https://www.npm
 - **Rust+Cargo**: Always the latest rust stable release, bundled with musl so the agent can build static binaries without any libc dependency
 - **Godot**: the [Godot engine](https://godotengine.org) (headless-capable) is installed system-wide; the real binary lives at `/usr/local/lib/godot/godot` and `/usr/local/bin/godot` is a thin wrapper that auto-adds `--headless` when no display server is available, so MCP `run_project` and CI work headlessly. It ships together with the [`@coding-solo/godot-mcp`](https://www.npmjs.com/package/@coding-solo/godot-mcp) MCP server (global npm). pi connects to MCP servers through the [pi-mcp-adapter](https://www.npmjs.com/package/pi-mcp-adapter) package, also installed globally — it adds a single lazy `mcp` proxy tool, so Godot's MCP tools only enter the model context when actually used.
 - **Init**: full `systemd` as entrypoint (`/sbin/init`), with `pi-web` and `pi-web-sessiond` managed as systemd services. Works well on Proxmox LXC (full TTY console, clean shutdown) and in nested podman containers.
-- **Users**: pi-agent and pi-web run as the unprivileged `agent` user. `openssh-server` is installed for administrative SSH access (as `root`).
+- **Users**: pi-agent and pi-web run as the unprivileged `agent` user. `openssh-server` is installed for administrative SSH access (as `root`, running on **port 2223**).
 - **Persistence**: agent/web state lives under `/home/agent`, which is intended to be bind-mounted (see `home-data/` for a reference layout). Put your own `~/.pi/agent/models.json` (and other pi configs) in that mounted volume.
   - Benefit: Base image can safely be updated regularly without losing anything the agent created inside its home folder, which is the only place it can write.
 
@@ -33,8 +33,8 @@ Key run options (podman):
 |---|---|
 | `-v ./home-data:/home/agent` | persistent agent + pi-web state |
 | `--userns=keep-id` | keep host UID so mounted files are owned correctly |
-| `-p 2222:22` | SSH access |
-| `-p 8555:8504` | pi-web web UI |
+| `-p 2223:2223` | SSH access |
+| `-p 8504:8504` | pi-web web UI |
 
 `run.sh` is just an example script; it works equally well with **podman quadlets** or as a Proxmox LXC container. If not run as root, there is no way in — that is the intended default.
 
