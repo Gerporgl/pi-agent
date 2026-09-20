@@ -11,6 +11,10 @@ ARG NODE_MAJOR=24
 ARG PI_VERSION=0.85.1
 ARG PI_WEB_VERSION=1.202609.0
 ARG RUST_VERSION=1.98.1
+# Godot is auto-tracked by build.sh; the two npm packages are pinned manually
+ARG GODOT_VERSION=4.7.2
+ARG GODOT_MCP_VERSION=0.1.1
+ARG PI_MCP_ADAPTER_VERSION=2.34.0
 ARG TARGET_ARCH=x86_64-unknown-linux-gnu
 
 USER root
@@ -52,6 +56,10 @@ RUN sed -i 's|http://archive.ubuntu.com|http://mirror.csclub.uwaterloo.ca|g' /et
     dbus-user-session \
     git \
     cmake zip unzip jq yq \
+    # Godot runtime deps: fontconfig is dlopened even in headless mode (fonts),
+    # the vulkan loader is only needed when a Vulkan renderer is active
+    libfontconfig1 \
+    libvulkan1 \
     python3-pip \
     python3-venv \
     pkg-config  \
@@ -154,10 +162,34 @@ RUN curl -sSfLO "https://static.rust-lang.org/dist/rust-${RUST_VERSION}-${TARGET
     rustc --version && cargo --version && \
     ls "/usr/local/lib/rustlib/${TARGET_ARCH%-gnu}-musl/lib" | grep -q '\.rlib$'
 
-# systemd service files and pi-web config, kept as real files in the repo
+# Install Godot engine system-wide (headless-capable). The binary is nearly
+# static; its runtime dlopens (fontconfig, vulkan) are covered by the apt layer.
+RUN case "${TARGET_ARCH}" in \
+        x86_64*) godot_arch=x86_64 ;; \
+        aarch64*) godot_arch=arm64 ;; \
+        *) echo "ERROR: unsupported architecture for Godot: ${TARGET_ARCH}"; exit 1 ;; \
+    esac && \
+    curl -fsSLO "https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}-stable/Godot_v${GODOT_VERSION}-stable_linux.${godot_arch}.zip" && \
+    unzip -q "Godot_v${GODOT_VERSION}-stable_linux.${godot_arch}.zip" && \
+    install -m 755 "Godot_v${GODOT_VERSION}-stable_linux.${godot_arch}" /usr/local/bin/godot && \
+    rm -f "Godot_v${GODOT_VERSION}-stable_linux.${godot_arch}" "Godot_v${GODOT_VERSION}-stable_linux.${godot_arch}.zip" && \
+    godot --version
+
+# Install the Godot MCP server and the pi MCP adapter system-wide (global npm,
+# shared by all users). pi loads the adapter from this global path via the
+# "packages" entry that init-agent ingests into each user's pi settings.
+RUN npm install -g @coding-solo/godot-mcp@${GODOT_MCP_VERSION} pi-mcp-adapter@${PI_MCP_ADAPTER_VERSION} && \
+    command -v godot-mcp && \
+    test -f /usr/lib/node_modules/pi-mcp-adapter/package.json && \
+    npm cache clean --force && \
+    rm -rf /root/.npm
+
+# systemd service files, pi-web config, and the per-home pi config stub that
+# init-agent ingests into /home/agent on every boot (kept as real files in the repo)
 COPY systemd/pi-web-sessiond.service systemd/pi-web.service systemd/pi-home-init.service /etc/systemd/system/
 COPY etc/pi-web/config.js /etc/pi-web/config.js
 COPY --chmod=755 bin/init-agent.sh /usr/local/bin/init-agent
+COPY etc/pi-agent/home/ /etc/pi-agent/home/
 
 # Listen on different ssh port, so that it can coexists with another ssh server on the same pasta network
 RUN mkdir -p /etc/systemd/system/ssh.socket.d && \

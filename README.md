@@ -5,6 +5,7 @@ A minimal Ubuntu 26.04 container that runs the [pi coding agent](https://www.npm
 ## Design
 
 - **Base**: Ubuntu 26.04 with a minimal set of CLI tools the agent can use (git, ripgrep, build-essential, jq, yq, etc.).
+- **Godot**: the [Godot engine](https://godotengine.org) (headless-capable) is installed system-wide at `/usr/local/bin/godot`, together with the [`@coding-solo/godot-mcp`](https://www.npmjs.com/package/@coding-solo/godot-mcp) MCP server (global npm). pi connects to MCP servers through the [pi-mcp-adapter](https://www.npmjs.com/package/pi-mcp-adapter) package, also installed globally — it adds a single lazy `mcp` proxy tool, so Godot's MCP tools only enter the model context when actually used.
 - **Init**: full `systemd` as entrypoint (`/sbin/init`), with `pi-web` and `pi-web-sessiond` managed as systemd services. Works well on Proxmox LXC (full TTY console, clean shutdown) and in nested podman containers.
 - **Users**: pi-agent and pi-web run as the unprivileged `agent` user. `openssh-server` is installed for administrative SSH access (as `root`).
 - **Persistence**: agent/web state lives under `/home/agent`, which is intended to be bind-mounted (see `home-data/` for a reference layout). Put your own `~/.pi/agent/models.json` (and other pi configs) in that mounted volume.
@@ -45,7 +46,17 @@ If your persistent home folder was created with an older image (when the user wa
 
 It renames pi session directories under `.pi/agent/sessions/` (`--home-ubuntu-*` → `--home-agent-*`), rewrites `/home/ubuntu` → `/home/agent` in the pi / pi-web state files (`trust.json`, `projects.json`, `archived-sessions.json`, `session-unread.json`, `sessiond-owner.json`), and updates the session header (first line) of each `*.jsonl` so its `cwd` matches the new project path — pi matches sessions to projects by that header field. The conversation lines inside `*.jsonl` files are left untouched. The script is idempotent (safe to re-run, e.g. to finish a partially completed migration) and refuses to run against the agent's own live home.
 
+## Godot & MCP tools
+
+The image ships the Godot engine (headless), the `godot-mcp` MCP server, and the `pi-mcp-adapter` pi package as system-wide layers. On every boot, `pi-home-init.service` ingests the small per-home config into `/home/agent` (idempotent, never clobbers user edits):
+
+- `~/.config/mcp/mcp.json` — default MCP config declaring the `godot` server (only if you haven't created your own)
+- `~/.pi/agent/skills/godot/SKILL.md` — a skill describing the godot MCP tools (only if missing)
+- `~/.pi/agent/settings.json` — merges the global `pi-mcp-adapter` package path into `packages` (idempotent)
+
+In pi, discover and call the tools through the `mcp` proxy: `mcp({ "search": "godot" })`, then `mcp({ "tool": "godot_run_project", "args": { ... } })`. For tasks the MCP tools don't cover, use `godot --headless` directly.
+
 ## Notes
 
 - No automatic apt updates: systemd update timers are removed. Update by rebuilding the image.
-- If `/home/agent` is mounted empty, a one-shot systemd service seeds it with a home skeleton (dotfiles, pi configs).
+- If `/home/agent` is mounted empty, a one-shot systemd service seeds it with a home skeleton (dotfiles, pi configs). The per-boot ingestion described above runs regardless, so upgraded containers with an existing home volume pick up new system-provided config without any downloads.

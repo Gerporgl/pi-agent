@@ -44,6 +44,11 @@ rust_version=$(curl -fsS https://static.rust-lang.org/dist/channel-rust-stable.t
 	| awk '/^\[pkg\.rust\]/{f=1; next} f && /^version =/{print; exit}' \
 	| cut -d'"' -f2 | cut -d' ' -f1)
 
+# Latest stable Godot engine release (GitHub marks the newest stable as "latest",
+# e.g. tag 4.7.2-stable -> 4.7.2)
+godot_version=$(curl -fsS https://api.github.com/repos/godotengine/godot/releases/latest \
+	| jq -r .tag_name | sed 's/-stable$//')
+
 # Target triple matching the architecture we are building for
 case "$(uname -m)" in
 	x86_64)  target_arch="x86_64-unknown-linux-gnu" ;;
@@ -51,8 +56,8 @@ case "$(uname -m)" in
 	*) echo "ERROR: unsupported architecture: $(uname -m)"; exit 1 ;;
 esac
 
-if [[ ! "$node_major" =~ ^[0-9]+$ ]] || [[ -z "$pi_version" || "$pi_version" == "null" ]] || [[ -z "$pi_web_version" || "$pi_web_version" == "null" ]] || [[ ! "$rust_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-	echo "ERROR: Unable to get the latest versions! (node_major=$node_major pi_version=$pi_version pi_web_version=$pi_web_version rust_version=$rust_version)"
+if [[ ! "$node_major" =~ ^[0-9]+$ ]] || [[ -z "$pi_version" || "$pi_version" == "null" ]] || [[ -z "$pi_web_version" || "$pi_web_version" == "null" ]] || [[ ! "$rust_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || [[ ! "$godot_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+	echo "ERROR: Unable to get the latest versions! (node_major=$node_major pi_version=$pi_version pi_web_version=$pi_web_version rust_version=$rust_version godot_version=$godot_version)"
 	exit 1
 fi
 
@@ -60,9 +65,10 @@ echo "node_major=$node_major"
 echo "pi_version=$pi_version"
 echo "pi_web_version=$pi_web_version"
 echo "rust_version=$rust_version"
+echo "godot_version=$godot_version"
 echo "target_arch=$target_arch"
 
-tag="node-${node_major}-pi-${pi_version}-pi-web-${pi_web_version}-rust-${rust_version}"
+tag="node-${node_major}-pi-${pi_version}-pi-web-${pi_web_version}-rust-${rust_version}-godot-${godot_version}"
 echo "tag=pi-agent:$tag"
 
 # For --build-ghcr: never re-push a same-tag image with different content,
@@ -82,7 +88,7 @@ if [ "$BUILD_GHCR" == "1" ] && [ "$FORCE" != "1" ]; then
 			 -H "Accept: application/vnd.docker.distribution.manifest.v2+json, application/vnd.oci.image.manifest.v1+json" \
 			 "https://ghcr.io/v2/$owner/pi-agent/manifests/$tag"; then
 		echo "Tag ghcr.io/$owner/pi-agent:$tag already exists on ghcr.io, skipping build"
-		rm -f node_version.txt pi_version.txt pi_web_version.txt rust_version.txt pi_agent_tag.txt
+		rm -f node_version.txt pi_version.txt pi_web_version.txt rust_version.txt godot_version.txt pi_agent_tag.txt
 		exit 0
 	fi
 fi
@@ -92,6 +98,7 @@ echo "$node_major" > node_version.txt
 echo "$pi_version" > pi_version.txt
 echo "$pi_web_version" > pi_web_version.txt
 echo "$rust_version" > rust_version.txt
+echo "$godot_version" > godot_version.txt
 echo "$tag" > pi_agent_tag.txt
 
 # Build args only change when one of the components was updated,
@@ -101,6 +108,7 @@ DOCKER_BUILDKIT=1 $command build \
 	--build-arg PI_VERSION="$pi_version" \
 	--build-arg PI_WEB_VERSION="$pi_web_version" \
 	--build-arg RUST_VERSION="$rust_version" \
+	--build-arg GODOT_VERSION="$godot_version" \
 	--build-arg TARGET_ARCH="$target_arch" \
 	-t pi-agent:latest \
 	-t "pi-agent:$tag" .
