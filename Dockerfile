@@ -28,9 +28,7 @@ RUN if [ -f /usr/bin/man.REAL ] || dpkg-divert --list /usr/bin/man | grep -q "ma
     fi
 
 
-RUN sed -i 's|http://archive.ubuntu.com|http://mirror.csclub.uwaterloo.ca|g' /etc/apt/sources.list.d/ubuntu.sources && \
-    sed -i 's|http://security.ubuntu.com|http://mirror.csclub.uwaterloo.ca|g' /etc/apt/sources.list.d/ubuntu.sources && \
-    cat /etc/apt/sources.list.d/ubuntu.sources && \
+RUN cat /etc/apt/sources.list.d/ubuntu.sources && \
     apt-get update && \
     apt-get purge -y unminimize && \
     apt-get install -y --no-install-recommends \ 
