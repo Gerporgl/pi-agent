@@ -35,6 +35,16 @@ Key run options (podman):
 
 `run.sh` is just an example script; it works equally well with **podman quadlets** or as a Proxmox LXC container. If not run as root, there is no way in — that is the intended default.
 
+## Migrating an existing home folder (ubuntu → agent)
+
+If your persistent home folder was created with an older image (when the user was `ubuntu`), migrate its pi / pi-web state to the `agent` layout:
+
+```bash
+./migrate.sh ./pi-agent-home              # add --dry-run to preview without changes
+```
+
+It renames pi session directories under `.pi/agent/sessions/` (`--home-ubuntu-*` → `--home-agent-*`) and rewrites `/home/ubuntu` → `/home/agent` in the pi / pi-web state files (`trust.json`, `projects.json`, `archived-sessions.json`, `session-unread.json`, `sessiond-owner.json`). Session discussion files (`*.jsonl`) are left untouched, and the script refuses to run against the agent's own live home.
+
 ## Notes
 
 - No automatic apt updates: systemd update timers are removed. Update by rebuilding the image.

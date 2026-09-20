@@ -15,6 +15,7 @@ Guidance for AI agents working in this repository.
 | `build_and_run.sh` | `build.sh` + `run_local.sh` |
 | `run.sh` | Example run script (creates container, sets root password at runtime, copies SSH key, attaches) |
 | `run_local.sh` | Runs `run.sh` against the locally built `pi-agent:latest` image |
+| `migrate.sh` | One-shot migration of an existing home folder from the old `ubuntu` user layout to the `agent` layout (`./migrate.sh <home-folder> [--dry-run]`) |
 | `systemd/*.service` | `pi-web.service`, `pi-web-sessiond.service`, `pi-home-init.service` (seed an empty `/home/agent` mount from `/opt/agent-home-skeleton`) |
 | `etc/pi-web/config.js` | pi-web gateway config, copied to `/etc/pi-web/config.js` |
 | `bin/init-agent.sh` | One-shot home-seeding script run by `pi-home-init.service` |
