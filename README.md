@@ -6,7 +6,7 @@ The entire container project was coded mostly by the pi agent itself (which also
 
 ## Design
 
-- **Base**: Ubuntu 26.04 with a minimal set of CLI tools the agent can use (git, ripgrep, build-essential, jq, yq, etc.).
+- **Base**: Ubuntu 26.04 with a minimal set of CLI tools the agent can use (python, uv, node.js, gcc, git, ripgrep, build-essential, jq, yq, etc.).
 - **Rust+Cargo**: Always the latest rust stable release, bundled with musl so the agent can build static binaries without any libc dependency
 - **Godot**: the [Godot engine](https://godotengine.org) (headless-capable) is installed system-wide; the real binary lives at `/usr/local/lib/godot/godot` and `/usr/local/bin/godot` is a thin wrapper that auto-adds `--headless` when no display server is available, so MCP `run_project` and CI work headlessly. It ships together with the [`@coding-solo/godot-mcp`](https://www.npmjs.com/package/@coding-solo/godot-mcp) MCP server (global npm). pi connects to MCP servers through the [pi-mcp-adapter](https://www.npmjs.com/package/pi-mcp-adapter) package, also installed globally — it adds a single lazy `mcp` proxy tool, so Godot's MCP tools only enter the model context when actually used.
 - **Init**: full `systemd` as entrypoint (`/sbin/init`), with `pi-web` and `pi-web-sessiond` managed as systemd services. Works well on Proxmox LXC (full TTY console, clean shutdown) and in nested podman containers.
