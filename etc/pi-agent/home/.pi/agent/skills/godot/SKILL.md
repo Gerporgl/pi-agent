@@ -38,3 +38,13 @@ godot --headless --path /path/to/project --quit          # validate / import a p
 godot --headless --path /path/to/project --export-release <preset> out.pck
 godot --version
 ```
+
+## Exporting releases (Linux / Windows)
+
+Official export templates are installed system-wide at `/usr/local/share/godot/export_templates/<version>/` and are available to the `agent` user via a symlink created by `init-agent` (`~/.local/share/godot/export_templates`). To export a release:
+
+1. Create an `export_presets.cfg` in the project (one `[preset.N]` section per target, with `name`, `platform` = `Linux` or `Windows Desktop`, `export_path`, and under `[preset.N.options]` set `binary_format/architecture="x86_64"` and at least one texture format, e.g. `texture_format/s3tc_bptc=true`).
+2. `mkdir -p <export dir>` (Godot requires the target's base directory to exist).
+3. Export: `godot --headless --path <project> --export-release "Linux" build/linux` and `godot --headless --path <project> --export-release "Windows Desktop" build/windows.exe`.
+
+Each export produces a native executable plus a `.pck` data file beside it.

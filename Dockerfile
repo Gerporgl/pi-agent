@@ -178,6 +178,23 @@ RUN case "${TARGET_ARCH}" in \
 COPY --chmod=755 bin/godot-wrapper.sh /usr/local/bin/godot
 RUN godot --version
 
+# Godot export templates (system-wide, version-pinned to the engine), so
+# Linux/Windows/etc. releases can be exported headlessly. Godot looks for
+# them in <user home>/.local/share/godot/export_templates/<engine version>/,
+# so per-user access is provided by symlinks (root here, agent via
+# init-agent.sh on boot). Note: .tpz is a plain zip.
+RUN curl -fsSLO "https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}-stable/Godot_v${GODOT_VERSION}-stable_export_templates.tpz" && \
+    mkdir -p /usr/local/share/godot/export_templates && \
+    unzip -q "Godot_v${GODOT_VERSION}-stable_export_templates.tpz" -d /tmp/godot-templates && \
+    test "$(tr -d '[:space:]' < /tmp/godot-templates/templates/version.txt)" = "${GODOT_VERSION}.stable" && \
+    mv /tmp/godot-templates/templates "/usr/local/share/godot/export_templates/${GODOT_VERSION}.stable" && \
+    chmod +x "/usr/local/share/godot/export_templates/${GODOT_VERSION}.stable"/* && \
+    rm -rf /tmp/godot-templates "Godot_v${GODOT_VERSION}-stable_export_templates.tpz" && \
+    test -f "/usr/local/share/godot/export_templates/${GODOT_VERSION}.stable/linux_release.x86_64" && \
+    test -f "/usr/local/share/godot/export_templates/${GODOT_VERSION}.stable/windows_release_x86_64.exe"
+RUN mkdir -p /root/.local/share/godot && \
+    ln -s /usr/local/share/godot/export_templates /root/.local/share/godot/export_templates
+
 # Install the Godot MCP server and the pi MCP adapter system-wide (global npm,
 # shared by all users). pi loads the adapter from this global path via the
 # "packages" entry that init-agent ingests into each user's pi settings.

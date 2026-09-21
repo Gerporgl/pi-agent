@@ -29,6 +29,15 @@ if [ ! -f /home/agent/.pi/agent/skills/godot/SKILL.md ]; then
     echo "Ingested godot skill."
 fi
 
+# Godot export templates: make the system-wide templates available to the
+# agent user (Godot looks in ~/.local/share/godot/export_templates/<ver>/).
+# Symlink only if the user has not provided their own templates.
+if [ ! -e /home/agent/.local/share/godot/export_templates ]; then
+    mkdir -p /home/agent/.local/share/godot
+    ln -s /usr/local/share/godot/export_templates /home/agent/.local/share/godot/export_templates
+    echo "Linked Godot export templates for agent user."
+fi
+
 # Enable the system-wide pi-mcp-adapter package in the user's pi settings
 # (idempotent merge; creates the settings file if it does not exist yet).
 SETTINGS=/home/agent/.pi/agent/settings.json

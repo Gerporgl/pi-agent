@@ -52,13 +52,16 @@ It renames pi session directories under `.pi/agent/sessions/` (`--home-ubuntu-*`
 
 ## Godot & MCP tools
 
-The image ships the Godot engine (headless), the `godot-mcp` MCP server, and the `pi-mcp-adapter` pi package as system-wide layers. On every boot, `pi-home-init.service` ingests the small per-home config into `/home/agent` (idempotent, never clobbers user edits):
+The image ships the Godot engine (headless), the official Godot export templates, the `godot-mcp` MCP server, and the `pi-mcp-adapter` pi package as system-wide layers. On every boot, `pi-home-init.service` ingests the small per-home config into `/home/agent` (idempotent, never clobbers user edits):
 
 - `~/.config/mcp/mcp.json` — default MCP config declaring the `godot` server (only if you haven't created your own)
 - `~/.pi/agent/skills/godot/SKILL.md` — a skill describing the godot MCP tools (only if missing)
 - `~/.pi/agent/settings.json` — merges the global `pi-mcp-adapter` package path into `packages` (idempotent)
+- `~/.local/share/godot/export_templates` — symlink to the system-wide export templates (only if you haven't provided your own)
 
 In pi, discover and call the tools through the `mcp` proxy: `mcp({ "search": "godot" })`, then `mcp({ "tool": "godot_run_project", "args": { ... } })`. For tasks the MCP tools don't cover, use `godot --headless` directly (the wrapper adds `--headless` automatically when no display is present).
+
+Because the official export templates are installed, you can export Linux and Windows Desktop releases headlessly from the CLI (define presets in `export_presets.cfg`, then `godot --headless --path <project> --export-release "Linux" build/linux` / `--export-release "Windows Desktop" build/windows.exe`).
 
 ## Notes
 
