@@ -41,10 +41,14 @@ godot --version
 
 ## Exporting releases (Linux / Windows)
 
-Official export templates are installed system-wide at `/usr/local/share/godot/export_templates/<version>/` and are available to the `agent` user via a symlink created by `init-agent` (`~/.local/share/godot/export_templates`). To export a release:
+Official export templates are installed system-wide at `/usr/local/share/godot/export_templates/<version>/` (Linux x86/arm32 + Windows x86) and are available to the `agent` user via a symlink created by `init-agent` (`~/.local/share/godot/export_templates`).
 
-1. Create an `export_presets.cfg` in the project (one `[preset.N]` section per target, with `name`, `platform` = `Linux` or `Windows Desktop`, `export_path`, and under `[preset.N.options]` set `binary_format/architecture="x86_64"` and at least one texture format, e.g. `texture_format/s3tc_bptc=true`).
-2. `mkdir -p <export dir>` (Godot requires the target's base directory to exist).
+A ready-to-use `export_presets.cfg` covering both platforms ships with this skill: `~/.pi/agent/skills/godot/export_presets.cfg.example`. To export a release:
+
+1. `cp ~/.pi/agent/skills/godot/export_presets.cfg.example <project>/export_presets.cfg` and edit the `export_path` values (and preset names) as needed.
+2. `mkdir -p <project>/build` (Godot requires the target's base directory to exist).
 3. Export: `godot --headless --path <project> --export-release "Linux" build/linux` and `godot --headless --path <project> --export-release "Windows Desktop" build/windows.exe`.
 
 Each export produces a native executable plus a `.pck` data file beside it.
+
+If you write the cfg by hand, note the gotchas: `platform` must be the exporter display name (`"Linux"`, `"Windows Desktop"` — not `"Windows"`), each preset needs `binary_format/architecture` plus at least one texture format (e.g. `texture_format/s3tc_bptc=true`) in its options section, and comments use `;` (not `#`) — a `#` line breaks parsing of the whole file.

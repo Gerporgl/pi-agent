@@ -179,15 +179,23 @@ COPY --chmod=755 bin/godot-wrapper.sh /usr/local/bin/godot
 RUN godot --version
 
 # Godot export templates (system-wide, version-pinned to the engine), so
-# Linux/Windows/etc. releases can be exported headlessly. Godot looks for
-# them in <user home>/.local/share/godot/export_templates/<engine version>/,
-# so per-user access is provided by symlinks (root here, agent via
-# init-agent.sh on boot). Note: .tpz is a plain zip.
+# Linux/Windows releases can be exported headlessly. Godot looks for them
+# in <user home>/.local/share/godot/export_templates/<engine version>/, so
+# per-user access is provided by symlinks (root here, agent via
+# init-agent.sh on boot). Note: .tpz is a plain zip. Only the Linux x86/arm32
+# and Windows x86 templates are kept; the Android/iOS/macOS/Web templates and
+# the Windows ARM64 / Linux ARM64 ones are pruned to keep the image small.
 RUN curl -fsSLO "https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}-stable/Godot_v${GODOT_VERSION}-stable_export_templates.tpz" && \
     mkdir -p /usr/local/share/godot/export_templates && \
     unzip -q "Godot_v${GODOT_VERSION}-stable_export_templates.tpz" -d /tmp/godot-templates && \
     test "$(tr -d '[:space:]' < /tmp/godot-templates/templates/version.txt)" = "${GODOT_VERSION}.stable" && \
     mv /tmp/godot-templates/templates "/usr/local/share/godot/export_templates/${GODOT_VERSION}.stable" && \
+    rm -f "/usr/local/share/godot/export_templates/${GODOT_VERSION}.stable"/android_* \
+          "/usr/local/share/godot/export_templates/${GODOT_VERSION}.stable"/ios* \
+          "/usr/local/share/godot/export_templates/${GODOT_VERSION}.stable"/macos* \
+          "/usr/local/share/godot/export_templates/${GODOT_VERSION}.stable"/web_* \
+          "/usr/local/share/godot/export_templates/${GODOT_VERSION}.stable"/windows_*_arm64* \
+          "/usr/local/share/godot/export_templates/${GODOT_VERSION}.stable"/linux_*arm64* && \
     chmod +x "/usr/local/share/godot/export_templates/${GODOT_VERSION}.stable"/* && \
     rm -rf /tmp/godot-templates "Godot_v${GODOT_VERSION}-stable_export_templates.tpz" && \
     test -f "/usr/local/share/godot/export_templates/${GODOT_VERSION}.stable/linux_release.x86_64" && \

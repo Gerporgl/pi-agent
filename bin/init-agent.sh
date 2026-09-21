@@ -29,6 +29,14 @@ if [ ! -f /home/agent/.pi/agent/skills/godot/SKILL.md ]; then
     echo "Ingested godot skill."
 fi
 
+# Reference export_presets.cfg (headless Linux/Windows exports). Only
+# ingested if missing, so upgraded homes pick it up without clobbering.
+if [ ! -f /home/agent/.pi/agent/skills/godot/export_presets.cfg.example ]; then
+    mkdir -p /home/agent/.pi/agent/skills/godot
+    cp "$STUB/.pi/agent/skills/godot/export_presets.cfg.example" /home/agent/.pi/agent/skills/godot/export_presets.cfg.example
+    echo "Ingested godot export_presets.cfg example."
+fi
+
 # Godot export templates: make the system-wide templates available to the
 # agent user (Godot looks in ~/.local/share/godot/export_templates/<ver>/).
 # Symlink only if the user has not provided their own templates.
