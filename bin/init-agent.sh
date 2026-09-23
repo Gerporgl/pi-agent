@@ -22,20 +22,17 @@ if [ ! -f /home/agent/.config/mcp/mcp.json ]; then
     echo "Ingested default MCP config."
 fi
 
-# Godot skill. Only ingested if missing.
-if [ ! -f /home/agent/.pi/agent/skills/godot/SKILL.md ]; then
-    mkdir -p /home/agent/.pi/agent/skills/godot
-    cp "$STUB/.pi/agent/skills/godot/SKILL.md" /home/agent/.pi/agent/skills/godot/SKILL.md
-    echo "Ingested godot skill."
-fi
-
-# Reference export_presets.cfg (headless Linux/Windows exports). Only
-# ingested if missing, so upgraded homes pick it up without clobbering.
-if [ ! -f /home/agent/.pi/agent/skills/godot/export_presets.cfg.example ]; then
-    mkdir -p /home/agent/.pi/agent/skills/godot
-    cp "$STUB/.pi/agent/skills/godot/export_presets.cfg.example" /home/agent/.pi/agent/skills/godot/export_presets.cfg.example
-    echo "Ingested godot export_presets.cfg example."
-fi
+# Godot skill (system-managed). Synced from the image on every boot so that
+# image upgrades reach pre-existing home volumes. Files are only rewritten
+# when their content differs, so unchanged homes are left untouched. To
+# customise, create your own skill folder instead of editing these files.
+mkdir -p /home/agent/.pi/agent/skills/godot
+for f in SKILL.md export_presets.cfg.example; do
+    if ! cmp -s "$STUB/.pi/agent/skills/godot/$f" "/home/agent/.pi/agent/skills/godot/$f"; then
+        cp "$STUB/.pi/agent/skills/godot/$f" "/home/agent/.pi/agent/skills/godot/$f"
+        echo "Synced godot skill file: $f."
+    fi
+done
 
 # Godot export templates: make the system-wide templates available to the
 # agent user (Godot looks in ~/.local/share/godot/export_templates/<ver>/).

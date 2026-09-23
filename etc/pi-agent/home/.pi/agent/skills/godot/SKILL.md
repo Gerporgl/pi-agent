@@ -39,6 +39,25 @@ godot --headless --path /path/to/project --export-release <preset> out.pck
 godot --version
 ```
 
+## Official documentation (local)
+
+The complete official Godot documentation, matching the installed engine version, is at `/usr/local/share/godot-docs` (reStructuredText, plain text — no build needed).
+
+Layout:
+- `index.rst` — master index of all sections
+- `getting_started/` — first steps, project setup, scripting basics
+- `tutorials/` — 2d, 3d, animation, shaders, physics, navigation, xr, ...
+- `classes/` — full API reference, one file per class, lowercased with a `class_` prefix (e.g. `classes/class_node3d.rst`)
+- `engine_details/` — architecture, class notes, migration guides
+
+How to use it:
+
+```bash
+rg -il "topic" /usr/local/share/godot-docs    # find the relevant page(s)
+```
+
+then read the matching `.rst` file(s). For a specific class, go directly to `classes/class_<lowercase_name>.rst` (e.g. `class_node3d.rst`).
+
 ## Exporting releases (Linux / Windows)
 
 Official export templates are installed system-wide at `/usr/local/share/godot/export_templates/<version>/` (Linux x86/arm32 + Windows x86) and are available to the `agent` user via a symlink created by `init-agent` (`~/.local/share/godot/export_templates`).

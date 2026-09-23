@@ -8,7 +8,7 @@ The entire container project was coded mostly by the pi agent itself (which also
 
 - **Base**: Ubuntu 26.04 with a minimal set of CLI tools the agent can use (python, uv, node.js, gcc, git, ripgrep, build-essential, jq, yq, etc.).
 - **Rust+Cargo**: Always the latest rust stable release, bundled with musl so the agent can build static binaries without any libc dependency
-- **Godot**: the [Godot engine](https://godotengine.org) (headless-capable) is installed system-wide; the real binary lives at `/usr/local/lib/godot/godot` and `/usr/local/bin/godot` is a thin wrapper that auto-adds `--headless` when no display server is available, so MCP `run_project` and CI work headlessly. It ships together with the [`@coding-solo/godot-mcp`](https://www.npmjs.com/package/@coding-solo/godot-mcp) MCP server (global npm). pi connects to MCP servers through the [pi-mcp-adapter](https://www.npmjs.com/package/pi-mcp-adapter) package, also installed globally — it adds a single lazy `mcp` proxy tool, so Godot's MCP tools only enter the model context when actually used.
+- **Godot**: the [Godot engine](https://godotengine.org) (headless-capable) is installed system-wide; the real binary lives at `/usr/local/lib/godot/godot` and `/usr/local/bin/godot` is a thin wrapper that auto-adds `--headless` when no display server is available, so MCP `run_project` and CI work headlessly. It ships together with the [`@coding-solo/godot-mcp`](https://www.npmjs.com/package/@coding-solo/godot-mcp) MCP server (global npm) and the official [Godot documentation](https://github.com/godotengine/godot-docs) (reStructuredText, version-matched to the engine) at `/usr/local/share/godot-docs`. pi connects to MCP servers through the [pi-mcp-adapter](https://www.npmjs.com/package/pi-mcp-adapter) package, also installed globally — it adds a single lazy `mcp` proxy tool, so Godot's MCP tools only enter the model context when actually used.
 - **Init**: full `systemd` as entrypoint (`/sbin/init`), with `pi-web` and `pi-web-sessiond` managed as systemd services. Works well on Proxmox LXC (full TTY console, clean shutdown) and in nested podman containers.
 - **Users**: pi-agent and pi-web run as the unprivileged `agent` user. `openssh-server` is installed for administrative SSH access (as `root`, running on **port 2223**, you'll need to mount your authorized_keys, or set a root password, see run.sh code).
 - **Persistence**: agent/web state lives under `/home/agent`, which is intended to be bind-mounted (see `home-data/` for a reference layout). Put your own `~/.pi/agent/models.json` (and other pi configs) in that mounted volume.
@@ -52,13 +52,15 @@ It renames pi session directories under `.pi/agent/sessions/` (`--home-ubuntu-*`
 
 ## Godot & MCP tools
 
-The image ships the Godot engine (headless), the official Godot export templates (Linux x86/arm32 + Windows x86), the `godot-mcp` MCP server, and the `pi-mcp-adapter` pi package as system-wide layers. On every boot, `pi-home-init.service` ingests the small per-home config into `/home/agent` (idempotent, never clobbers user edits):
+The image ships the Godot engine (headless), the official Godot export templates (Linux x86/arm32 + Windows x86), the official Godot documentation (reStructuredText, version-matched to the engine) at `/usr/local/share/godot-docs`, the `godot-mcp` MCP server, and the `pi-mcp-adapter` pi package as system-wide layers. On every boot, `pi-home-init.service` ingests the small per-home config into `/home/agent`. The godot skill files are system-managed and always synced from the image (so image upgrades reach pre-existing homes; customise in your own skill folder instead of editing them); everything else is only ingested if missing, so user edits are never clobbered:
 
 - `~/.config/mcp/mcp.json` — default MCP config declaring the `godot` server (only if you haven't created your own)
-- `~/.pi/agent/skills/godot/SKILL.md` — a skill describing the godot MCP tools (only if missing)
-- `~/.pi/agent/skills/godot/export_presets.cfg.example` — a ready-to-use preset file for headless Linux/Windows exports (only if missing)
+- `~/.pi/agent/skills/godot/SKILL.md` — a skill describing the godot MCP tools and the local documentation (always synced from the image)
+- `~/.pi/agent/skills/godot/export_presets.cfg.example` — a ready-to-use preset file for headless Linux/Windows exports (always synced from the image)
 - `~/.pi/agent/settings.json` — merges the global `pi-mcp-adapter` package path into `packages` (idempotent)
 - `~/.local/share/godot/export_templates` — symlink to the system-wide export templates (only if you haven't provided your own)
+
+The godot `SKILL.md` (ingested into the agent home) tells the agent where the local documentation lives and how to navigate it: `index.rst` is the master index, `tutorials/` holds the topic guides, and `classes/` is the full API reference (one `.rst` per class). The agent typically greps it with `rg` and reads the matching pages.
 
 In pi, discover and call the tools through the `mcp` proxy: `mcp({ "search": "godot" })`, then `mcp({ "tool": "godot_run_project", "args": { ... } })`. For tasks the MCP tools don't cover, use `godot --headless` directly (the wrapper adds `--headless` automatically when no display is present).
 

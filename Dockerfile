@@ -203,6 +203,21 @@ RUN curl -fsSLO "https://github.com/godotengine/godot/releases/download/${GODOT_
 RUN mkdir -p /root/.local/share/godot && \
     ln -s /usr/local/share/godot/export_templates /root/.local/share/godot/export_templates
 
+# Official Godot documentation (reStructuredText), system-wide and pinned to
+# the engine's major.minor: godot-docs keeps one branch per major.minor
+# (e.g. "4.7"), cloned shallow at build time. Only the text files are kept —
+# the .git metadata (~200MB) and the images/videos (~180MB) are useless to an
+# AI agent, leaving ~35MB of reST. The agent learns where it lives from the
+# godot SKILL.md.
+RUN godot_doc_branch="${GODOT_VERSION%.*}" && \
+    git clone --depth 1 --branch "${godot_doc_branch}" https://github.com/godotengine/godot-docs.git /tmp/godot-docs && \
+    sed -n 's/^version = os.getenv("READTHEDOCS_VERSION", "\([0-9.]*\)").*/\1/p' /tmp/godot-docs/conf.py | grep -qx "${godot_doc_branch}" && \
+    rm -rf /tmp/godot-docs/.git && \
+    find /tmp/godot-docs -type f ! -name "*.rst" ! -name "*.md" -delete && \
+    find /tmp/godot-docs -type d -empty -delete && \
+    mv /tmp/godot-docs /usr/local/share/godot-docs && \
+    test -f /usr/local/share/godot-docs/index.rst
+
 # Install the Godot MCP server and the pi MCP adapter system-wide (global npm,
 # shared by all users). pi loads the adapter from this global path via the
 # "packages" entry that init-agent ingests into each user's pi settings.
