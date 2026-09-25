@@ -4,7 +4,8 @@ on:
   push:
     branches: [ "master" ]
   schedule:
-    - cron: '0 6 * * *' # daily at 06:00 UTC
+    - cron: '0 1 * * *'
+    - timezone: 'America/Toronto'
   workflow_dispatch:
     inputs:
       force:
