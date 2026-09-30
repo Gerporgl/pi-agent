@@ -22,6 +22,22 @@ if [ ! -f /home/agent/.pi/agent/mcp.json ]; then
     echo "Ingested default MCP config."
 fi
 
+# pi-web MCP stopgap extension (system-managed). pi-web sessions run via the
+# pi SDK, which does not load built-in extensions, so this registers the
+# built-in MCP/codemode/tool_search extensions for them. Synced from the
+# image on every boot, and removed from the home when it no longer ships in
+# the image (once pi-web registers these extensions itself).
+EXT=/home/agent/.pi/agent/extensions/mcp.js
+if [ -f "$STUB/.pi/agent/extensions/mcp.js" ]; then
+    mkdir -p /home/agent/.pi/agent/extensions
+    if ! cmp -s "$STUB/.pi/agent/extensions/mcp.js" "$EXT"; then
+        cp "$STUB/.pi/agent/extensions/mcp.js" "$EXT"
+        echo "Synced pi-web MCP stopgap extension."
+    fi
+else
+    rm -f "$EXT"
+fi
+
 # Godot skill (system-managed). Synced from the image on every boot so that
 # image upgrades reach pre-existing home volumes. Files are only rewritten
 # when their content differs, so unchanged homes are left untouched. To
