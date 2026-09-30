@@ -5,7 +5,7 @@ description: Use when working on Godot engine projects (project.godot, .tscn sce
 
 # Godot engine (headless)
 
-The Godot engine binary is at `/usr/local/bin/godot` (headless-capable). A `godot` MCP server is available through the `mcp` proxy tool (provided by the pi-mcp-adapter package). It starts lazily — only when you actually call one of its tools.
+The Godot engine binary is at `/usr/local/bin/godot` (headless-capable). A `godot` MCP server is available through the built-in `mcp` tool. It starts lazily — only when you actually call one of its tools.
 
 ## Workflow
 

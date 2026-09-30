@@ -10,7 +10,7 @@ Guidance for AI agents working in this repository.
 
 | Path | Purpose |
 |---|---|
-| `Dockerfile` | Image definition (Ubuntu 26.04, systemd entrypoint, Node/Rust toolchains, pi + pi-web via npm, Godot engine + export templates + official docs + godot-mcp + pi-mcp-adapter system-wide) |
+| `Dockerfile` | Image definition (Ubuntu 26.04, systemd entrypoint, Node/Rust toolchains, pi + pi-web via npm, Godot engine + export templates + official docs + godot-mcp system-wide) |
 | `build.sh` | Resolves latest component versions, writes version `.txt` files, builds `pi-agent:latest` + a versioned tag |
 | `build_and_run.sh` | `build.sh` + `run_local.sh` |
 | `run.sh` | Example run script (creates container, sets root password at runtime, copies SSH key, attaches) |
@@ -40,7 +40,7 @@ It runs `CT_TOOL=docker ./build.sh --build-ghcr` (adding `--force` when dispatch
 ./build_and_run.sh    # build + local run
 ```
 
-`build.sh` fetches the latest stable Node major, pi, pi-web, Rust, and Godot versions from their upstreams, writes them to the version `.txt` files, and builds with those as build args. Image tag format: `node-<major>-pi-<ver>-pi-web-<ver>-rust-<ver>-godot-<ver>`. The Godot MCP server and pi-mcp-adapter npm packages are **pinned** as Dockerfile ARG defaults (`GODOT_MCP_VERSION`, `PI_MCP_ADAPTER_VERSION`) — bump them manually in the Dockerfile, they are not part of the tag.
+`build.sh` fetches the latest stable Node major, pi, pi-web, Rust, and Godot versions from their upstreams, writes them to the version `.txt` files, and builds with those as build args. Image tag format: `node-<major>-pi-<ver>-pi-web-<ver>-rust-<ver>-godot-<ver>`. The Godot MCP server npm package is **pinned** as a Dockerfile ARG default (`GODOT_MCP_VERSION`) — bump it manually in the Dockerfile, it is not part of the tag.
 
 **Podman is available on this machine** and is the preferred tool for building and running locally.
 
@@ -69,6 +69,6 @@ With the default entrypoint you get a booted systemd system (log in as root if a
 - **Always confirm with the user before committing to git or pushing.** Never commit/push without explicit user approval.
 - **After completing a task, update `README.md` and `AGENTS.md`** to reflect any changes (new scripts, options, ports, behaviors).
 - The root password is intentionally not baked into the image; `run.sh` sets it at runtime. Without it, there is no way in — that is the intended secure default.
-- Heavy tools (Godot binary, export templates, official Godot docs, `godot-mcp`, `pi-mcp-adapter`) live in system-wide image layers; `init-agent.sh` only ingests the small per-home config (mcp.json, the `pi-mcp-adapter` entry in `~/.pi/agent/settings.json`, and the export-templates symlink) on every boot, idempotently and without downloads. The godot skill files (`SKILL.md`, `export_presets.cfg.example`) are system-managed and **always synced** from the image on every boot (only rewritten when content differs) so image upgrades reach pre-existing home volumes — customise in a separate skill folder instead of editing them in place. Never bake per-user state into the home skeleton if it must reach pre-existing home volumes on upgrades — use the ingest path instead.
+- Heavy tools (Godot binary, export templates, official Godot docs, `godot-mcp`) live in system-wide image layers; `init-agent.sh` only ingests the small per-home config (mcp.json and the export-templates symlink) on every boot, idempotently and without downloads. The godot skill files (`SKILL.md`, `export_presets.cfg.example`) are system-managed and **always synced** from the image on every boot (only rewritten when content differs) so image upgrades reach pre-existing home volumes — customise in a separate skill folder instead of editing them in place. Never bake per-user state into the home skeleton if it must reach pre-existing home volumes on upgrades — use the ingest path instead.
 - No automatic apt updates inside the image (update timers removed); update by rebuilding.
 - `home-data/` and the version `.txt` files are gitignored (see `.gitignore`). `push.sh` is also intentionally ignored: it is a local helper script (run on another machine to push to a local repo) that must never be committed.

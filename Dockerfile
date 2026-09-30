@@ -14,7 +14,6 @@ ARG RUST_VERSION=1.98.1
 # Godot is auto-tracked by build.sh; the two npm packages are pinned manually
 ARG GODOT_VERSION=4.7.2
 ARG GODOT_MCP_VERSION=0.1.1
-ARG PI_MCP_ADAPTER_VERSION=2.34.0
 ARG TARGET_ARCH=x86_64-unknown-linux-gnu
 
 USER root
@@ -218,12 +217,9 @@ RUN godot_doc_branch="${GODOT_VERSION%.*}" && \
     mv /tmp/godot-docs /usr/local/share/godot-docs && \
     test -f /usr/local/share/godot-docs/index.rst
 
-# Install the Godot MCP server and the pi MCP adapter system-wide (global npm,
-# shared by all users). pi loads the adapter from this global path via the
-# "packages" entry that init-agent ingests into each user's pi settings.
-RUN npm install -g @coding-solo/godot-mcp@${GODOT_MCP_VERSION} pi-mcp-adapter@${PI_MCP_ADAPTER_VERSION} && \
+# Install the Godot MCP server system-wide (global npm, shared by all users).
+RUN npm install -g @coding-solo/godot-mcp@${GODOT_MCP_VERSION} && \
     command -v godot-mcp && \
-    test -f /usr/lib/node_modules/pi-mcp-adapter/package.json && \
     npm cache clean --force && \
     rm -rf /root/.npm
 

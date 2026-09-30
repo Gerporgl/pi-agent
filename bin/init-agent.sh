@@ -9,9 +9,9 @@ fi
 
 # Ingest the system-provided pi config into the agent home (idempotent, every
 # boot). The heavy pieces live in system-wide image layers (godot binary,
-# global npm pi-mcp-adapter package, global godot-mcp bin); only these small
-# files are ingested per home, so upgraded containers with a pre-existing
-# home volume need no downloads at runtime.
+# global godot-mcp bin); only these small files are ingested per home, so
+# upgraded containers with a pre-existing home volume need no downloads at
+# runtime.
 STUB=/etc/pi-agent/home
 
 # Default MCP config (godot server). Only ingested if the user has not
@@ -41,21 +41,6 @@ if [ ! -e /home/agent/.local/share/godot/export_templates ]; then
     mkdir -p /home/agent/.local/share/godot
     ln -s /usr/local/share/godot/export_templates /home/agent/.local/share/godot/export_templates
     echo "Linked Godot export templates for agent user."
-fi
-
-# Enable the system-wide pi-mcp-adapter package in the user's pi settings
-# (idempotent merge; creates the settings file if it does not exist yet).
-SETTINGS=/home/agent/.pi/agent/settings.json
-ADAPTER_PKG=/usr/lib/node_modules/pi-mcp-adapter
-mkdir -p /home/agent/.pi/agent
-if [ ! -s "$SETTINGS" ]; then
-    printf '{\n  "packages": [\n    "%s"\n  ]\n}\n' "$ADAPTER_PKG" > "$SETTINGS"
-    echo "Created pi settings with pi-mcp-adapter package."
-else
-    jq --arg pkg "$ADAPTER_PKG" \
-        '.packages = ((.packages // []) + (if ((.packages // []) | index($pkg)) then [] else [$pkg] end))' \
-        "$SETTINGS" > "$SETTINGS.tmp" && mv "$SETTINGS.tmp" "$SETTINGS"
-    echo "Ensured pi-mcp-adapter package in pi settings."
 fi
 
 chown -R agent:agent /home/agent
