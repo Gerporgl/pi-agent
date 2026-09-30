@@ -5,14 +5,14 @@ description: Use when working on Godot engine projects (project.godot, .tscn sce
 
 # Godot engine (headless)
 
-The Godot engine binary is at `/usr/local/bin/godot` (headless-capable). A `godot` MCP server is available through the built-in `mcp` tool. It starts lazily — only when you actually call one of its tools.
+The Godot engine binary is at `/usr/local/bin/godot` (headless-capable). A `godot` MCP server is available as deferred tools in the `mcp__godot` namespace. They load lazily — `tool_search` exposes them only when you actually need them.
 
 ## Workflow
 
-1. Discover the exact tool schemas: `mcp({ "search": "godot" })`
-2. Call a tool: `mcp({ "tool": "godot_run_project", "args": { "projectPath": "/path/to/project" } })`
+1. Discover and load the godot MCP tools: `tool_search({ "query": "godot" })` — this exposes them as `mcp__godot_*` tools for the next step.
+2. Call a tool directly: `mcp__godot_run_project({ "projectPath": "/path/to/project" })`
 
-Tool names are prefixed with the server name (`godot_`).
+Tool names are namespaced as `mcp__godot_<tool>` (e.g. `mcp__godot_run_project`).
 
 ## Tools (server: godot)
 

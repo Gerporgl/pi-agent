@@ -66,7 +66,7 @@ The image ships the Godot engine (headless), the official Godot export templates
 
 The godot `SKILL.md` (ingested into the agent home) tells the agent where the local documentation lives and how to navigate it: `index.rst` is the master index, `tutorials/` holds the topic guides, and `classes/` is the full API reference (one `.rst` per class). The agent typically greps it with `rg` and reads the matching pages.
 
-In pi, discover and call the tools through the `mcp` proxy: `mcp({ "search": "godot" })`, then `mcp({ "tool": "godot_run_project", "args": { ... } })`. For tasks the MCP tools don't cover, use `godot --headless` directly (the wrapper adds `--headless` automatically when no display is present).
+In pi, the godot MCP tools are deferred tools in the `mcp__godot` namespace: load them with `tool_search({ "query": "godot" })`, then call them directly, e.g. `mcp__godot_run_project({ "projectPath": "..." })`. For tasks the MCP tools don't cover, use `godot --headless` directly (the wrapper adds `--headless` automatically when no display is present).
 
 Because the official export templates are installed, you can export Linux and Windows Desktop releases headlessly from the CLI: copy `~/.pi/agent/skills/godot/export_presets.cfg.example` into the project as `export_presets.cfg` (edit the `export_path` values), then `godot --headless --path <project> --export-release "Linux" build/linux` / `--export-release "Windows Desktop" build/windows.exe`.
 
