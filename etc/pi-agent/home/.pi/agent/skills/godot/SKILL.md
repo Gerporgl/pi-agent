@@ -5,27 +5,27 @@ description: Use when working on Godot engine projects (project.godot, .tscn sce
 
 # Godot engine (headless)
 
-The Godot engine binary is at `/usr/local/bin/godot` (headless-capable). A `godot` MCP server is available as deferred tools in the `mcp__godot` namespace. They load lazily — `tool_search` exposes them only when you actually need them.
+The Godot engine binary is at `/usr/local/bin/godot` (headless-capable). A `godot` MCP server is available through the built-in `codemode` tool: its tools are exposed as nested tools named `mcp__godot__<tool>` (e.g. `mcp__godot__run_project`).
 
 ## Workflow
 
-1. Discover and load the godot MCP tools: `tool_search({ "query": "godot" })` — this exposes them as `mcp__godot_*` tools for the next step.
-2. Call a tool directly: `mcp__godot_run_project({ "projectPath": "/path/to/project" })`
+1. Discover the exact tool schemas: `ALL_TOOLS` inside a codemode script lists every tool with its parameter declaration.
+2. Call a tool from a codemode script: `return await tools.mcp__godot__run_project({ "projectPath": "/path/to/project" })`
 
-Tool names are namespaced as `mcp__godot_<tool>` (e.g. `mcp__godot_run_project`).
+Tool names are namespaced as `mcp__godot__<tool>` (server name `godot`, double-underscore separator).
 
 ## Tools (server: godot)
 
-- `run_project` — run a project headlessly and capture output (params: `projectPath`, optional `scene`)
-- `get_debug_output` — read console output and errors from the running/last run
-- `stop_project` — stop the currently running project
-- `launch_editor` — launch the Godot editor for a project (params: `projectPath`)
-- `get_godot_version` — print the installed Godot version
-- `list_projects` — find Godot projects under a directory
-- `get_project_info` — retrieve metadata about a project
-- `create_scene` / `add_node` / `load_sprite` / `save_scene` — scene and node manipulation
-- `export_mesh_library` — export a 3D scene as a MeshLibrary resource (GridMap)
-- `get_uid` / `update_project_uids` — resource UID management (Godot 4.4+)
+- `mcp__godot__run_project` — run a project headlessly and capture output (params: `projectPath`, optional `scene`)
+- `mcp__godot__get_debug_output` — read console output and errors from the running/last run
+- `mcp__godot__stop_project` — stop the currently running project
+- `mcp__godot__launch_editor` — launch the Godot editor for a project (params: `projectPath`)
+- `mcp__godot__get_godot_version` — print the installed Godot version
+- `mcp__godot__list_projects` — find Godot projects under a directory
+- `mcp__godot__get_project_info` — retrieve metadata about a project
+- `mcp__godot__create_scene` / `mcp__godot__add_node` / `mcp__godot__load_sprite` / `mcp__godot__save_scene` — scene and node manipulation
+- `mcp__godot__export_mesh_library` — export a 3D scene as a MeshLibrary resource (GridMap)
+- `mcp__godot__get_uid` / `mcp__godot__update_project_uids` — resource UID management (Godot 4.4+)
 
 Note: `/usr/local/bin/godot` is a wrapper that auto-adds `--headless` when no display server is available, so plain `godot --path <project>` works on headless machines (and `run_project` works through the MCP server).
 
