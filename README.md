@@ -20,6 +20,11 @@ The entire container project was coded mostly by the pi agent itself (which also
 ./build.sh            # builds pi-agent:latest (uses podman if available, else docker)
 ./build_and_run.sh    # build + local run
 ```
+The image tag encodes all component versions (e.g. `node-24-pi-0.86.1-pi-web-1.202609.0-rust-1.98.1-godot-4.7.2`) and is also embedded in the image itself as the `org.opencontainers.image.version` OCI label, so it can be read at runtime without knowing the tag:
+
+```bash
+podman image inspect --format '{{index .Labels "org.opencontainers.image.version"}}' pi-agent:latest
+```
 
 ## Running
 

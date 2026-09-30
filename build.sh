@@ -104,6 +104,7 @@ echo "$tag" > pi_agent_tag.txt
 # Build args only change when one of the components was updated,
 # so cached layers are reused otherwise.
 DOCKER_BUILDKIT=1 $command build \
+	--build-arg IMAGE_VERSION="$tag" \
 	--build-arg NODE_MAJOR="$node_major" \
 	--build-arg PI_VERSION="$pi_version" \
 	--build-arg PI_WEB_VERSION="$pi_web_version" \

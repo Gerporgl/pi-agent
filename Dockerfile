@@ -1,9 +1,16 @@
 # Use ubuntu as base, it works best with lxc and systemd tty console and shutdown
 FROM ubuntu:26.04 
 
+# Full component version tag (e.g. node-24-pi-0.86.1-pi-web-1.202609.0-rust-1.98.1-godot-4.7.2),
+# stored as the image version so `podman inspect`/quadlet scripts can read it at runtime.
+# It overrides the `org.opencontainers.image.version:26.04` inherited from the base image.
+ARG IMAGE_VERSION=node-24-pi-0.86.1-pi-web-1.202609.0-rust-1.98.1-godot-4.7.2
+
 # Clear the OCI metadata inherited from the base image (the long Canonical
-# description otherwise shows up in the ghcr.io page header)
-LABEL org.opencontainers.image.description="" \
+# description otherwise shows up in the ghcr.io page header) and set our own
+# version label
+LABEL org.opencontainers.image.version="${IMAGE_VERSION}" \
+      org.opencontainers.image.description="" \
       org.opencontainers.image.title=""
 
 # Versions passed as build args by build.sh (defaults are the current ones, so a plain `docker build .` still works)

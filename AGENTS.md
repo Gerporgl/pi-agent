@@ -10,7 +10,7 @@ Guidance for AI agents working in this repository.
 
 | Path | Purpose |
 |---|---|
-| `Dockerfile` | Image definition (Ubuntu 26.04, systemd entrypoint, Node/Rust toolchains, pi + pi-web via npm, Godot engine + export templates + official docs + godot-mcp system-wide) |
+| `Dockerfile` | Image definition (Ubuntu 26.04, systemd entrypoint, Node/Rust toolchains, pi + pi-web via npm, Godot engine + export templates + official docs + godot-mcp system-wide; the full version tag is embedded as the `org.opencontainers.image.version` OCI label) |
 | `build.sh` | Resolves latest component versions, writes version `.txt` files, builds `pi-agent:latest` + a versioned tag |
 | `build_and_run.sh` | `build.sh` + `run_local.sh` |
 | `run.sh` | Example run script (creates container, sets root password at runtime, copies SSH key, attaches) |
@@ -40,7 +40,7 @@ It runs `CT_TOOL=docker ./build.sh --build-ghcr` (adding `--force` when dispatch
 ./build_and_run.sh    # build + local run
 ```
 
-`build.sh` fetches the latest stable Node major, pi, pi-web, Rust, and Godot versions from their upstreams, writes them to the version `.txt` files, and builds with those as build args. Image tag format: `node-<major>-pi-<ver>-pi-web-<ver>-rust-<ver>-godot-<ver>`. The Godot MCP server npm package is **pinned** as a Dockerfile ARG default (`GODOT_MCP_VERSION`) — bump it manually in the Dockerfile, it is not part of the tag.
+`build.sh` fetches the latest stable Node major, pi, pi-web, Rust, and Godot versions from their upstreams, writes them to the version `.txt` files, and builds with those as build args. Image tag format: `node-<major>-pi-<ver>-pi-web-<ver>-rust-<ver>-godot-<ver>`. The full tag is also embedded in the image as the `org.opencontainers.image.version` OCI label (overriding the base image's `26.04`), so it can be read at runtime via `podman inspect`. The Godot MCP server npm package is **pinned** as a Dockerfile ARG default (`GODOT_MCP_VERSION`) — bump it manually in the Dockerfile, it is not part of the tag.
 
 **Podman is available on this machine** and is the preferred tool for building and running locally.
 
