@@ -59,7 +59,7 @@ It renames pi session directories under `.pi/agent/sessions/` (`--home-ubuntu-*`
 
 The image ships the Godot engine (headless), the official Godot export templates (Linux x86/arm32 + Windows x86), the official Godot documentation (reStructuredText, version-matched to the engine) at `/usr/local/share/godot-docs`, the `godot-mcp` MCP server as system-wide layers. On every boot, `pi-home-init.service` ingests the small per-home config into `/home/agent`. The godot skill files are system-managed and always synced from the image (so image upgrades reach pre-existing homes; customise in your own skill folder instead of editing them); everything else is only ingested if missing, so user edits are never clobbered:
 
-- `~/.config/mcp/mcp.json` — default MCP config declaring the `godot` server (only if you haven't created your own)
+- `~/.pi/agent/mcp.json` — default MCP config declaring the `godot` server (only if you haven't created your own)
 - `~/.pi/agent/skills/godot/SKILL.md` — a skill describing the godot MCP tools and the local documentation (always synced from the image)
 - `~/.pi/agent/skills/godot/export_presets.cfg.example` — a ready-to-use preset file for headless Linux/Windows exports (always synced from the image)
 - `~/.local/share/godot/export_templates` — symlink to the system-wide export templates (only if you haven't provided your own)

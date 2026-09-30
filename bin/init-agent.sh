@@ -16,9 +16,9 @@ STUB=/etc/pi-agent/home
 
 # Default MCP config (godot server). Only ingested if the user has not
 # created their own, so user edits are never clobbered on upgrades.
-if [ ! -f /home/agent/.config/mcp/mcp.json ]; then
-    mkdir -p /home/agent/.config/mcp
-    cp "$STUB/.config/mcp/mcp.json" /home/agent/.config/mcp/mcp.json
+if [ ! -f /home/agent/.pi/agent/mcp.json ]; then
+    mkdir -p /home/agent/.pi/agent
+    cp "$STUB/.pi/agent/mcp.json" /home/agent/.pi/agent/mcp.json
     echo "Ingested default MCP config."
 fi
 
