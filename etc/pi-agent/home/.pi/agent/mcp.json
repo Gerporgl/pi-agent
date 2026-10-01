@@ -1,7 +1,8 @@
 {
   "mcpServers": {
     "godot": {
-      "command": "godot-mcp"
+      "command": "godot-mcp",
+      "exposure": "deferred"
     }
   }
 }
