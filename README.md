@@ -59,14 +59,14 @@ It renames pi session directories under `.pi/agent/sessions/` (`--home-ubuntu-*`
 
 The image ships the Godot engine (headless), the official Godot export templates (Linux x86/arm32 + Windows x86), the official Godot documentation (reStructuredText, version-matched to the engine) at `/usr/local/share/godot-docs`, the `godot-mcp` MCP server as system-wide layers. On every boot, `pi-home-init.service` ingests the small per-home config into `/home/agent`. The godot skill files are system-managed and always synced from the image (so image upgrades reach pre-existing homes; customise in your own skill folder instead of editing them); everything else is only ingested if missing, so user edits are never clobbered:
 
-- `~/.pi/agent/mcp.json` — default MCP config declaring the `godot` server (only if you haven't created your own)
+- `~/.pi/agent/mcp.json` — default MCP config declaring the `godot` server with a `description` (shown in pi's system prompt and used to rank its tools in tool search; only if you haven't created your own)
 - `~/.pi/agent/skills/godot/SKILL.md` — a skill describing the godot MCP tools and the local documentation (always synced from the image)
 - `~/.pi/agent/skills/godot/export_presets.cfg.example` — a ready-to-use preset file for headless Linux/Windows exports (always synced from the image)
 - `~/.local/share/godot/export_templates` — symlink to the system-wide export templates (only if you haven't provided your own)
 
 The godot `SKILL.md` (ingested into the agent home) tells the agent where the local documentation lives and how to navigate it: `index.rst` is the master index, `tutorials/` holds the topic guides, and `classes/` is the full API reference (one `.rst` per class). The agent typically greps it with `rg` and reads the matching pages.
 
-In pi, the godot MCP tools are deferred tools in the `mcp__godot` namespace: load them with `tool_search({ "query": "godot" })`, then call them directly, e.g. `mcp__godot_run_project({ "projectPath": "..." })`. For tasks the MCP tools don't cover, use `godot --headless` directly (the wrapper adds `--headless` automatically when no display is present).
+In pi, the godot MCP tools are deferred tools in the `mcp__godot` namespace: load them with `tool_search({ "query": "godot" })`, then call them directly, e.g. `mcp__godot__run_project({ "projectPath": "..." })`. For tasks the MCP tools don't cover, use `godot --headless` directly (the wrapper adds `--headless` automatically when no display is present).
 
 Because the official export templates are installed, you can export Linux and Windows Desktop releases headlessly from the CLI: copy `~/.pi/agent/skills/godot/export_presets.cfg.example` into the project as `export_presets.cfg` (edit the `export_path` values), then `godot --headless --path <project> --export-release "Linux" build/linux` / `--export-release "Windows Desktop" build/windows.exe`.
 

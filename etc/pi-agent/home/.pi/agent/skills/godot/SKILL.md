@@ -9,10 +9,10 @@ The Godot engine binary is at `/usr/local/bin/godot` (headless-capable). A `godo
 
 ## Workflow
 
-1. Discover and load the godot MCP tools: `tool_search({ "query": "godot" })` — this exposes them as `mcp__godot_*` tools for the next step.
-2. Call a tool directly: `mcp__godot_run_project({ "projectPath": "/path/to/project" })`
+1. Discover and load the godot MCP tools: `tool_search({ "query": "godot" })` — this exposes them as `mcp__godot__*` tools for the next step.
+2. Call a tool directly: `mcp__godot__run_project({ "projectPath": "/path/to/project" })`
 
-Tool names are namespaced as `mcp__godot_<tool>` (e.g. `mcp__godot_run_project`).
+Tool names are namespaced as `mcp__godot__<tool>` (e.g. `mcp__godot__run_project`).
 
 ## Tools (server: godot)
 
