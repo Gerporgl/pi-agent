@@ -139,6 +139,7 @@ RUN case "${TARGET_ARCH}" in \
             [ "$(basename "$p")" = "$esb_platform" ] || rm -rf "$p"; \
         done; \
     done && \
+    rm -Rf /usr/lib/node_modules/@jmfederico/pi-web/dist/pi-packages/relays/ && \
     npm config set logs-max 0 --global && \
     # Clean up build caches (npm cache + node-gyp headers downloaded for node-pty)
     npm cache clean --force && \
