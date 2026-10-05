@@ -1,27 +1,36 @@
+# Multi-stage build.
+#
+# WHY: container layer caching is linear (a changed instruction busts that
+# layer and every layer after it) AND podman/buildah busts *every* layer of a
+# stage as soon as any build arg DECLARED in that stage changes — even layers
+# above it, even if that stage does not use the arg. With the previous
+# single-stage layout, a pi or pi-web bump rebuilt the whole image, including
+# the ~1.3GB Godot export-template download and the Rust toolchain.
+#
+# HOW: each component lives in its own stage and declares ONLY the build args
+# it consumes. A stage whose declared args are unchanged is fully reused, so
+# bumping one component rebuilds only that component.
+#
+#   base     ubuntu + apt layer + user setup + Node.js runtime  (rarely changes)
+#   rust     Rust toolchain + musl target            (ARG RUST_VERSION)
+#   godot    engine + export templates + docs        (ARG GODOT_VERSION)
+#   apps     pi + pi-web npm installs                (ARG PI_VERSION/PI_WEB_VERSION)
+#   mcp      godot-mcp npm install                   (ARG GODOT_MCP_VERSION)
+#   runtime  assembly: godot tree + rust + apps/mcp
+#   final    service files, config, OCI version label (ARG IMAGE_VERSION, which
+#            changes on EVERY build, so it is quarantined in this last stage)
+#
+# Assembly rule: in `runtime`, `COPY --from:` the rarely-updated components
+# FIRST (rust, godot) and the frequently updated ones LAST (apps/mcp), because
+# the linear rule still applies inside the assembly stage.
+
 # Use ubuntu as base, it works best with lxc and systemd tty console and shutdown
-FROM ubuntu:26.04 
+FROM ubuntu:26.04 AS base
 
-# Full component version tag (e.g. node-24-pi-0.86.1-pi-web-1.202609.0-rust-1.98.1-godot-4.7.2),
-# stored as the image version so `podman inspect`/quadlet scripts can read it at runtime.
-# It overrides the `org.opencontainers.image.version:26.04` inherited from the base image.
-ARG IMAGE_VERSION=node-24-pi-0.86.1-pi-web-1.202609.0-rust-1.98.1-godot-4.7.2
-
-# Clear the OCI metadata inherited from the base image (the long Canonical
-# description otherwise shows up in the ghcr.io page header) and set our own
-# version label
-LABEL org.opencontainers.image.version="${IMAGE_VERSION}" \
-      org.opencontainers.image.description="" \
-      org.opencontainers.image.title=""
-
-# Versions passed as build args by build.sh (defaults are the current ones, so a plain `docker build .` still works)
+# Versions passed as build args by build.sh (defaults are the current ones, so a plain `docker build .` still works).
+# NOTE: only declare an ARG in the stage that consumes it — an unused ARG whose
+# value changes still busts that whole stage's cache.
 ARG NODE_MAJOR=24
-ARG PI_VERSION=0.85.1
-ARG PI_WEB_VERSION=1.202609.0
-ARG RUST_VERSION=1.98.1
-# Godot is auto-tracked by build.sh; the two npm packages are pinned manually
-ARG GODOT_VERSION=4.7.2
-ARG GODOT_MCP_VERSION=0.1.1
-ARG TARGET_ARCH=x86_64-unknown-linux-gnu
 
 USER root
 
@@ -116,45 +125,26 @@ RUN mkdir -p /home/agent/.ssh && chown agent:agent /home/agent/.ssh && \
     cp /root/.profile /home/agent/.profile && \
     cp /root/.bashrc /home/agent/.bashrc
 
-
-# Install latest stable Node.js system-wide (NodeSource), available globally to all users
-RUN case "${TARGET_ARCH}" in \
-        x86_64*) esb_platform=linux-x64 ;; \
-        aarch64*) esb_platform=linux-arm64 ;; \
-        *) esb_platform=linux-x64 ;; \
-    esac && \
-    curl -fsSL https://deb.nodesource.com/setup_${NODE_MAJOR}.x | bash - && \
+# Install latest stable Node.js system-wide (NodeSource), available globally to all users.
+# Kept in `base` (not in the npm stages) so the dpkg database stays consistent:
+# a Node major bump is rare, and copying apt-installed binaries between stages
+# would leave nodejs untracked in the final image's dpkg database.
+RUN curl -fsSL https://deb.nodesource.com/setup_${NODE_MAJOR}.x | bash - && \
     apt-get install -y nodejs && \
     node --version && npm --version && \
-    npm install -g --ignore-scripts @earendil-works/pi-coding-agent@${PI_VERSION} && \
-    mkdir -p /var/lib/systemd/linger && \
-    touch /var/lib/systemd/linger/agent && \
-    touch /var/lib/systemd/linger/root && \
-    npm install -g @jmfederico/pi-web@${PI_WEB_VERSION} --allow-scripts=node-pty && \
-    # pi-coding-agent ships an npm-shrinkwrap.json that pins esbuild binaries for
-    # every platform, and npm honors a bundled shrinkwrap verbatim (no platform
-    # filtering), so prune all esbuild platform packages except the native one
-    for d in $(find /usr/lib/node_modules -type d -name "@esbuild"); do \
-        for p in "$d"/*/; do \
-            [ "$(basename "$p")" = "$esb_platform" ] || rm -rf "$p"; \
-        done; \
-    done && \
-    rm -Rf /usr/lib/node_modules/@jmfederico/pi-web/dist/pi-packages/relays/ && \
-    npm config set logs-max 0 --global && \
-    # Clean up build caches (npm cache + node-gyp headers downloaded for node-pty)
-    npm cache clean --force && \
-    rm -rf /root/.cache /root/.npm && \
     apt-get -y autoremove && \
-    apt-get -y clean  && \
-    rm -rf \
-    /var/lib/apt/lists/* \
-    /var/tmp/* \
-    /tmp/*
+    apt-get -y clean && \
+    rm -rf /var/lib/apt/lists/* /var/tmp/* /tmp/*
+
+# --- Component stages (each declares only the args it consumes) ---
 
 # Install Rust toolchain system-wide from the official standalone package,
 # including the musl target for building fully static, libc-independent binaries
 # (the musl target is self-contained: it bundles its own static musl libc,
 # so no distro musl packages are needed)
+FROM base AS rust
+ARG RUST_VERSION=1.98.1
+ARG TARGET_ARCH=x86_64-unknown-linux-gnu
 RUN curl -sSfLO "https://static.rust-lang.org/dist/rust-${RUST_VERSION}-${TARGET_ARCH}.tar.gz" && \
     curl -sSfLO "https://static.rust-lang.org/dist/rust-std-${RUST_VERSION}-${TARGET_ARCH%-gnu}-musl.tar.gz" && \
     tar -xzf "rust-${RUST_VERSION}-${TARGET_ARCH}.tar.gz" && \
@@ -172,6 +162,9 @@ RUN curl -sSfLO "https://static.rust-lang.org/dist/rust-${RUST_VERSION}-${TARGET
 # The real binary goes to /usr/local/lib/godot/godot; /usr/local/bin/godot is a
 # wrapper (bin/godot-wrapper.sh) that auto-adds --headless when no display
 # server is available, so MCP run_project and CI work on headless machines.
+FROM base AS godot
+ARG GODOT_VERSION=4.7.2
+ARG TARGET_ARCH=x86_64-unknown-linux-gnu
 RUN case "${TARGET_ARCH}" in \
         x86_64*) godot_arch=x86_64 ;; \
         aarch64*) godot_arch=arm64 ;; \
@@ -186,8 +179,8 @@ COPY --chmod=755 bin/godot-wrapper.sh /usr/local/bin/godot
 RUN godot --version
 
 # Godot export templates (system-wide, version-pinned to the engine), so
-# Linux/Windows releases can be exported headlessly. Godot looks for them
-# in <user home>/.local/share/godot/export_templates/<engine version>/, so
+# Linux/Windows releases can be exported headlessly. Godot looks for them in
+# <user home>/.local/share/godot/export_templates/<engine version>/, so
 # per-user access is provided by symlinks (root here, agent via
 # init-agent.sh on boot). Note: .tpz is a plain zip. Only the Linux x86/arm32
 # and Windows x86 templates are kept; the Android/iOS/macOS/Web templates and
@@ -207,8 +200,6 @@ RUN curl -fsSLO "https://github.com/godotengine/godot/releases/download/${GODOT_
     rm -rf /tmp/godot-templates "Godot_v${GODOT_VERSION}-stable_export_templates.tpz" && \
     test -f "/usr/local/share/godot/export_templates/${GODOT_VERSION}.stable/linux_release.x86_64" && \
     test -f "/usr/local/share/godot/export_templates/${GODOT_VERSION}.stable/windows_release_x86_64.exe"
-RUN mkdir -p /root/.local/share/godot && \
-    ln -s /usr/local/share/godot/export_templates /root/.local/share/godot/export_templates
 
 # Official Godot documentation (reStructuredText), system-wide and pinned to
 # the engine's major.minor: godot-docs keeps one branch per major.minor
@@ -225,11 +216,82 @@ RUN godot_doc_branch="${GODOT_VERSION%.*}" && \
     mv /tmp/godot-docs /usr/local/share/godot-docs && \
     test -f /usr/local/share/godot-docs/index.rst
 
+# Install the pi agent and pi-web (global npm, shared by all users).
+# node-pty (a pi-web dependency) needs the build toolchain from `base`.
+FROM base AS apps
+ARG PI_VERSION=0.85.1
+ARG PI_WEB_VERSION=1.202609.0
+ARG TARGET_ARCH=x86_64-unknown-linux-gnu
+RUN case "${TARGET_ARCH}" in \
+        x86_64*) esb_platform=linux-x64 ;; \
+        aarch64*) esb_platform=linux-arm64 ;; \
+        *) esb_platform=linux-x64 ;; \
+    esac && \
+    npm install -g --ignore-scripts @earendil-works/pi-coding-agent@${PI_VERSION} && \
+    npm install -g @jmfederico/pi-web@${PI_WEB_VERSION} --allow-scripts=node-pty && \
+    # pi-coding-agent ships an npm-shrinkwrap.json that pins esbuild binaries for
+    # every platform, and npm honors a bundled shrinkwrap verbatim (no platform
+    # filtering), so prune all esbuild platform packages except the native one
+    for d in $(find /usr/lib/node_modules -type d -name "@esbuild"); do \
+        for p in "$d"/*/; do \
+            [ "$(basename "$p")" = "$esb_platform" ] || rm -rf "$p"; \
+        done; \
+    done && \
+    rm -Rf /usr/lib/node_modules/@jmfederico/pi-web/dist/pi-packages/relays/ && \
+    # Clean up build caches (npm cache + node-gyp headers downloaded for node-pty)
+    npm cache clean --force && \
+    rm -rf /root/.cache /root/.npm
+
 # Install the Godot MCP server system-wide (global npm, shared by all users).
+# Chained on `apps` so the global npm tree stays a single consistent tree
+# (npm rewrites /usr/lib/node_modules/... globally); a pi/pi-web bump only
+# re-runs this tiny install.
+FROM apps AS mcp
+ARG GODOT_MCP_VERSION=0.1.1
 RUN npm install -g @coding-solo/godot-mcp@${GODOT_MCP_VERSION} && \
     command -v godot-mcp && \
     npm cache clean --force && \
-    rm -rf /root/.npm
+    rm -rf /root/.npm && \
+    # Record the global npm bin symlinks so the assembly stage can recreate
+    # them: COPY dereferences symlinks, so `pi`, `pi-web`, `godot-mcp`, `npm`...
+    # cannot be carried over as links by COPY --from.
+    mkdir -p /etc/pi-agent && \
+    find /usr/bin -maxdepth 1 -type l -printf '%p\t%l\n' | grep node_modules > /etc/pi-agent/npm-bins.tsv && \
+    cat /etc/pi-agent/npm-bins.tsv
+
+# --- Assembly ---
+# Start from the Godot stage (its layers are the biggest and change the least)
+# and copy in the others, rarely-updated first.
+FROM godot AS runtime
+COPY --from=rust /usr/local /usr/local
+COPY --from=mcp /usr/lib/node_modules /usr/lib/node_modules
+COPY --from=mcp /etc/pi-agent/npm-bins.tsv /etc/pi-agent/npm-bins.tsv
+# Recreate the npm global bin links and the export-templates symlink (COPY
+# dereferences symlinks, so they have to be re-created, not copied).
+RUN while IFS="$(printf '\t')" read -r link target; do ln -sfn "$target" "$link"; done < /etc/pi-agent/npm-bins.tsv && \
+    mkdir -p /root/.local/share/godot && \
+    ln -sfn /usr/local/share/godot/export_templates /root/.local/share/godot/export_templates && \
+    # Smoke-test the assembled toolchain
+    godot --version && rustc --version && cargo --version && node --version && npm --version && \
+    command -v godot-mcp && command -v pi && command -v pi-web && \
+    ls -l /usr/bin/pi /usr/bin/pi-web /usr/bin/godot-mcp
+
+# --- Final stage: config + OCI metadata ---
+# IMAGE_VERSION changes on every build, so it is quarantined here: this stage
+# only holds cheap COPY/RUN steps and never invalidates the layers above.
+FROM runtime AS final
+
+# Full component version tag (e.g. node-24-pi-0.86.1-pi-web-1.202609.0-rust-1.98.1-godot-4.7.2),
+# stored as the image version so `podman inspect`/quadlet scripts can read it at runtime.
+# It overrides the `org.opencontainers.image.version:26.04` inherited from the base image.
+ARG IMAGE_VERSION=node-24-pi-0.86.1-pi-web-1.202609.0-rust-1.98.1-godot-4.7.2
+
+# Clear the OCI metadata inherited from the base image (the long Canonical
+# description otherwise shows up in the ghcr.io page header) and set our own
+# version label
+LABEL org.opencontainers.image.version="${IMAGE_VERSION}" \
+      org.opencontainers.image.description="" \
+      org.opencontainers.image.title=""
 
 # systemd service files, pi-web config, and the per-home pi config stub that
 # init-agent ingests into /home/agent on every boot (kept as real files in the repo)
@@ -246,7 +308,11 @@ RUN mkdir -p /etc/systemd/system/ssh.socket.d && \
     echo "ListenStream=0.0.0.0:2223" >> /etc/systemd/system/ssh.socket.d/listen.conf && \
     echo "ListenStream=[::]:2223" >> /etc/systemd/system/ssh.socket.d/listen.conf
 
-RUN mkdir -p /opt/agent-home-skeleton && \
+RUN mkdir -p /var/lib/systemd/linger && \
+    touch /var/lib/systemd/linger/agent && \
+    touch /var/lib/systemd/linger/root && \
+    npm config set logs-max 0 --global && \
+    mkdir -p /opt/agent-home-skeleton && \
     cp -a /home/agent/. /opt/agent-home-skeleton/
 
 RUN systemctl enable pi-home-init.service pi-web-sessiond.service pi-web.service pi-web-restart.timer

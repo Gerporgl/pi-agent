@@ -10,7 +10,7 @@ Guidance for AI agents working in this repository.
 
 | Path | Purpose |
 |---|---|
-| `Dockerfile` | Image definition (Ubuntu 26.04, systemd entrypoint, Node/Rust toolchains, pi + pi-web via npm, Godot engine + export templates + official docs + godot-mcp system-wide; the full version tag is embedded as the `org.opencontainers.image.version` OCI label) |
+| `Dockerfile` | Image definition, **multi-stage** (Ubuntu 26.04, systemd entrypoint, Node/Rust toolchains, pi + pi-web via npm, Godot engine + export templates + official docs + godot-mcp system-wide; the full version tag is embedded as the `org.opencontainers.image.version` OCI label). Stages: `base` → `rust` / `godot` / `apps` → `mcp` → `runtime` → `final` |
 | `build.sh` | Resolves latest component versions, writes version `.txt` files, builds `pi-agent:latest` + a versioned tag |
 | `build_and_run.sh` | `build.sh` + `run_local.sh` |
 | `run.sh` | Example run script (creates container, sets root password at runtime, copies SSH key, attaches) |
@@ -42,6 +42,28 @@ It runs `CT_TOOL=docker ./build.sh --build-ghcr` (adding `--force` when dispatch
 ```
 
 `build.sh` fetches the latest stable Node major, pi, pi-web, Rust, and Godot versions from their upstreams, writes them to the version `.txt` files, and builds with those as build args. Image tag format: `node-<major>-pi-<ver>-pi-web-<ver>-rust-<ver>-godot-<ver>`. The full tag is also embedded in the image as the `org.opencontainers.image.version` OCI label (overriding the base image's `26.04`), so it can be read at runtime via `podman inspect`. The Godot MCP server npm package is **pinned** as a Dockerfile ARG default (`GODOT_MCP_VERSION`) — bump it manually in the Dockerfile, it is not part of the tag.
+
+### Multi-stage layout and cache rules (important when editing the Dockerfile)
+
+Each component is its own stage and declares **only** the build args it consumes:
+
+| Stage | Contents | Args declared |
+|---|---|---|
+| `base` | apt layer, `agent` user setup, Node.js (NodeSource, apt) | `NODE_MAJOR` |
+| `rust` | Rust toolchain + musl std | `RUST_VERSION`, `TARGET_ARCH` |
+| `godot` | engine, wrapper, export templates, official docs | `GODOT_VERSION`, `TARGET_ARCH` |
+| `apps` | pi + pi-web npm installs (esbuild/relays pruning) | `PI_VERSION`, `PI_WEB_VERSION`, `TARGET_ARCH` |
+| `mcp` | `@coding-solo/godot-mcp` npm install | `GODOT_MCP_VERSION` |
+| `runtime` | assembly: `FROM godot` + `COPY --from=rust` then `COPY --from=mcp` | none |
+| `final` | systemd units, `/etc/pi-web`, `/etc/pi-agent/home`, OCI label | `IMAGE_VERSION` |
+
+Keep these invariants when changing it:
+
+- **Never declare a version `ARG` globally.** podman/buildah busts *every* layer of a stage when any arg declared in that stage changes, even unused ones and layers above it; a global `IMAGE_VERSION`/`PI_VERSION` at the top makes every build a full rebuild.
+- **Layer caching is linear**: in `runtime`, `COPY --from:` the rare components first (`rust`, `godot`) and the frequent ones last (`mcp`). In `final`, keep the ever-changing `LABEL` in that stage only.
+- **`COPY` dereferences symlinks.** The npm global bin links (`pi`, `pi-web`, `godot-mcp`) are re-created in `runtime` from `/etc/pi-agent/npm-bins.tsv` generated in the `mcp` stage, and the root export-templates symlink is re-created too — do not try to `COPY` them.
+- Node.js is installed by apt inside `base` (not copied between stages) so the final image's dpkg database stays consistent; a Node major bump therefore does rebuild everything (rare by design).
+- `runtime` smoke-tests the assembled toolchain (`godot`, `rustc`, `cargo`, `node`, `npm`, `pi`, `pi-web`); keep it if you add stages.
 
 **Podman is available on this machine** and is the preferred tool for building and running locally.
 

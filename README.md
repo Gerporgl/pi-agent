@@ -26,6 +26,37 @@ The image tag encodes all component versions (e.g. `node-24-pi-0.86.1-pi-web-1.2
 podman image inspect --format '{{index .Labels "org.opencontainers.image.version"}}' pi-agent:latest
 ```
 
+### Build stages and cache reuse
+
+The Dockerfile is a **multi-stage build**: each component is its own stage and
+declares *only* the build args it consumes, so bumping one component rebuilds
+only that stage and reuses the rest from the local layer cache.
+
+| Stage | Contents | Args it declares | Changes |
+|---|---|---|---|
+| `base` | apt layer, user setup, Node.js runtime | `NODE_MAJOR` | rare |
+| `rust` | Rust toolchain + musl target | `RUST_VERSION`, `TARGET_ARCH` | rare |
+| `godot` | engine + export templates + docs | `GODOT_VERSION`, `TARGET_ARCH` | rare |
+| `apps` | pi + pi-web npm installs | `PI_VERSION`, `PI_WEB_VERSION`, `TARGET_ARCH` | frequent |
+| `mcp` | `godot-mcp` npm install | `GODOT_MCP_VERSION` | rare |
+| `runtime` | assembly (`COPY --from=`) | — | — |
+| `final` | service files, config, OCI label | `IMAGE_VERSION` | every build |
+
+Two container-build rules drive this layout:
+
+1. Layer caching is **linear**: a changed instruction busts that layer and
+everything after it. That is why the assembly stage copies the rarely-updated
+components first (`rust`, `godot`) and the frequent ones last (`mcp`), and why
+the ever-changing `IMAGE_VERSION` label is quarantined in the last stage.
+2. **podman/buildah busts every layer of a stage** when any build arg
+*declared in that stage* changes — even layers above it, even if unused there.
+So version args must never be declared globally at the top of the file.
+
+Measured on a local podman 5.7 build (full cold build ≈ 6 min / 3.95 GB image):
+a pi version bump re-runs only `apps` + `mcp` + assembly + final — the apt,
+Node, Rust (450 MB download) and Godot (1.36 GB download) layers all come from
+cache, ≈ 24 s.
+
 ## Running
 
 ```bash

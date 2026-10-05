@@ -101,8 +101,11 @@ echo "$rust_version" > rust_version.txt
 echo "$godot_version" > godot_version.txt
 echo "$tag" > pi_agent_tag.txt
 
-# Build args only change when one of the components was updated,
-# so cached layers are reused otherwise.
+# Build args map 1:1 to the Dockerfile stages: each version arg is declared
+# only in the stage that consumes it, so bumping one component only rebuilds
+# that stage (podman busts every layer of a stage when any arg declared in it
+# changes, which is why the args must not be declared globally).
+# IMAGE_VERSION changes on every build but is quarantined in the last stage.
 DOCKER_BUILDKIT=1 $command build \
 	--build-arg IMAGE_VERSION="$tag" \
 	--build-arg NODE_MAJOR="$node_major" \
