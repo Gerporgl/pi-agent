@@ -234,6 +234,7 @@ RUN npm install -g @coding-solo/godot-mcp@${GODOT_MCP_VERSION} && \
 # systemd service files, pi-web config, and the per-home pi config stub that
 # init-agent ingests into /home/agent on every boot (kept as real files in the repo)
 COPY systemd/pi-web-sessiond.service systemd/pi-web.service systemd/pi-home-init.service /etc/systemd/system/
+COPY systemd/pi-web-restart.service systemd/pi-web-restart.timer /etc/systemd/system/
 COPY etc/pi-web/config.js /etc/pi-web/config.js
 COPY --chmod=755 bin/init-agent.sh /usr/local/bin/init-agent
 COPY etc/pi-agent/home/ /etc/pi-agent/home/
@@ -248,7 +249,7 @@ RUN mkdir -p /etc/systemd/system/ssh.socket.d && \
 RUN mkdir -p /opt/agent-home-skeleton && \
     cp -a /home/agent/. /opt/agent-home-skeleton/
 
-RUN systemctl enable pi-home-init.service pi-web-sessiond.service pi-web.service
+RUN systemctl enable pi-home-init.service pi-web-sessiond.service pi-web.service pi-web-restart.timer
 
 
 STOPSIGNAL SIGRTMIN+3

@@ -1,0 +1,13 @@
+[Unit]
+Description=Restart the pi-web session daemon and the pi-web gateway
+# Temporary workaround for upstream pi-web issues (terminal URL spam and
+# MCP server instantiation). Triggered daily by pi-web-restart.timer.
+After=pi-web-sessiond.service pi-web.service
+
+[Service]
+Type=oneshot
+# Restart the session daemon first; pi-web Requires= it, so pi-web is pulled
+# down with it, then bring the gateway back up on top of the fresh daemon.
+ExecStart=/usr/bin/systemctl restart pi-web-sessiond.service
+ExecStart=/usr/bin/sleep 3
+ExecStart=/usr/bin/systemctl restart pi-web.service

@@ -1,0 +1,14 @@
+[Unit]
+Description=Daily pi-web / pi-web-sessiond restart (upstream workaround)
+
+[Timer]
+# Fires at 06:00 local container time (whatever /etc/localtime the host
+# provides; UTC if the host does not override it). No timezone hardcoded.
+OnCalendar=*-*-* 06:00:00
+# If the container was down (or not yet started) at 06:00, run once as soon
+# as systemd boots instead of waiting a full day.
+Persistent=true
+Unit=pi-web-restart.service
+
+[Install]
+WantedBy=timers.target
