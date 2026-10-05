@@ -65,7 +65,10 @@ RUN cat /etc/apt/sources.list.d/ubuntu.sources && \
     init \
     # pi agent related and tools for the agent
     build-essential \
+    # pi's grep/find tools look for ripgrep and fd on PATH (Debian/Ubuntu ships fd as
+    # "fdfind", which pi accepts) so it never downloads them into ~/.pi/agent/bin/
     ripgrep \
+    fd-find \
     dbus-user-session \
     git \
     cmake zip unzip jq yq \

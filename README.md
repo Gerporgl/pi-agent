@@ -6,7 +6,9 @@ The entire container project was coded mostly by the pi agent itself (which also
 
 ## Design
 
-- **Base**: Ubuntu 26.04 with a minimal set of CLI tools the agent can use (python, uv, node.js, gcc, git, ripgrep, build-essential, jq, yq, etc.).
+- **Base**: Ubuntu 26.04 with a minimal set of CLI tools the agent can use (python, uv, node.js, gcc, git, ripgrep, fd-find, build-essential, jq, yq, etc.).
+
+  `ripgrep` and `fd-find` are installed on purpose: pi's `grep`/`find` tools search `PATH` for `rg` and `fd`/`fdfind` and otherwise download the binaries from GitHub into `~/.pi/agent/bin/` on first session start. With the apt packages present, no download ever happens (so the image also works with `PI_OFFLINE`/`pi --offline`). A `~/.pi/agent/bin/fd` downloaded by an older image takes precedence over the apt one; delete it if you want the packaged version.
 - **Rust+Cargo**: Always the latest rust stable release, bundled with musl so the agent can build static binaries without any libc dependency
 - **Godot**: the [Godot engine](https://godotengine.org) (headless-capable) is installed system-wide; the real binary lives at `/usr/local/lib/godot/godot` and `/usr/local/bin/godot` is a thin wrapper that auto-adds `--headless` when no display server is available, so MCP `run_project` and CI work headlessly. It ships together with the [`@coding-solo/godot-mcp`](https://www.npmjs.com/package/@coding-solo/godot-mcp) MCP server (global npm) and the official [Godot documentation](https://github.com/godotengine/godot-docs) (reStructuredText, version-matched to the engine) at `/usr/local/share/godot-docs`. pi (>= 0.99) has native MCP support, so no adapter package is needed.
 - **Init**: full `systemd` as entrypoint (`/sbin/init`), with `pi-web` and `pi-web-sessiond` managed as systemd services. Works well on Proxmox LXC (full TTY console, clean shutdown) and in nested podman containers.
