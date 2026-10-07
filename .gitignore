@@ -1,6 +1,5 @@
 home-data/
 push.sh
-models.json
 node_version.txt
 pi_version.txt
 pi_web_version.txt
