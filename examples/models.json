@@ -5,26 +5,35 @@
       "api": "openai-completions",
       "apiKey": "free",
       "compat": {
-          "supportsDeveloperRole": false
-        },
+        "supportsDeveloperRole": false
+      },
       "models": [
-        { "id": "Qwen3.8-27B",
-          "contextWindow": 64000, "maxTokens": 12000,
-           "reasoning": true,
-           "thinkingLevelMap": {
-             "off": null,
-             "minimal": null,
-             "low": "low",
-             "medium": "medium",
-             "high": null,
-             "xhigh": "xhigh",
-             "max": null
-           },
-           "samplingParamsByThinkingLevel": {
-             "low": { "reasoning_budget_tokens": 2048 },
-             "medium": { "reasoning_budget_tokens": 6144 },
-             "xhigh": { "reasoning_budget_tokens": 8192 }
-           }
+        {
+          "id": "Qwen3.8-27B",
+          "_comment": "When using ISTA IQ3_S with mtp:1 and rocm, a 64K context is what could fit in vram on a 16GB dedicated amdgpu",
+          "contextWindow": 64000,
+          "maxTokens": 12000,
+          "reasoning": true,
+          "thinkingLevelMap": {
+            "off": null,
+            "minimal": null,
+            "low": "low",
+            "medium": "medium",
+            "high": null,
+            "xhigh": "xhigh",
+            "max": null
+          },
+          "samplingParamsByThinkingLevel": {
+            "low": {
+              "reasoning_budget_tokens": 2048
+            },
+            "medium": {
+              "reasoning_budget_tokens": 6144
+            },
+            "xhigh": {
+              "reasoning_budget_tokens": 8192
+            }
+          }
         }
       ]
     },
@@ -33,47 +42,64 @@
       "api": "openai-completions",
       "apiKey": "free",
       "compat": {
-          "supportsDeveloperRole": false
-        },
+        "supportsDeveloperRole": false
+      },
       "models": [
-        { "id": "Qwen3.8-Flash",
-          "contextWindow": 131072, "maxTokens": 16384,
-           "reasoning": true,
-           "thinkingLevelMap": {
-             "off": "off",
-             "minimal": "minimal",
-             "low": "low",
-             "medium": "medium",
-             "high": null,
-             "xhigh": "xhigh",
-             "max": null
-           },
-           "samplingParamsByThinkingLevel": {
-             "low": { "reasoning_budget_tokens": 2048 },
-             "medium": { "reasoning_budget_tokens": 8192 },
-             "xhigh": { "reasoning_budget_tokens": 12288 }
-           }
+        {
+          "id": "Qwen3.8-Flash",
+          "contextWindow": 131072,
+          "maxTokens": 16384,
+          "reasoning": true,
+          "_comment": "The minimal thinking level is currently required for pi-web to summarize the session title since it disables thinking for Flash, otherwise the 24 tokens limit requested to the model fail and pi-web just do a text truncation.",
+          "thinkingLevelMap": {
+            "off": "off",
+            "minimal": "minimal",
+            "low": "low",
+            "medium": "medium",
+            "high": null,
+            "xhigh": "xhigh",
+            "max": null
+          },
+          "samplingParamsByThinkingLevel": {
+            "low": {
+              "reasoning_budget_tokens": 2048
+            },
+            "medium": {
+              "reasoning_budget_tokens": 8192
+            },
+            "xhigh": {
+              "reasoning_budget_tokens": 12288
+            }
+          }
         },
-        { "id": "Qwen3.8-Flash-Coder",
-          "contextWindow": 65536, "maxTokens": 12288,
-           "reasoning": true,
-           "thinkingLevelMap": {
-             "off": null,
-             "minimal": "minimal",
-             "low": "low",
-             "medium": "medium",
-             "high": null,
-             "xhigh": "xhigh",
-             "max": null
-           },
-           "samplingParamsByThinkingLevel": {
-             "low": { "reasoning_budget_tokens": 2048 },
-             "medium": { "reasoning_budget_tokens": 6144 },
-             "xhigh": { "reasoning_budget_tokens": 8192 }
-           }
+        {
+          "id": "Qwen3.8-Flash-Coder",
+          "contextWindow": 131072,
+          "maxTokens": 16384,
+          "reasoning": true,
+          "_comment": "The minimal thinking level is currently required for pi-web to summarize the session title since it disables thinking for Flash, otherwise the 24 tokens limit requested to the model fail and pi-web just do a text truncation.",
+          "thinkingLevelMap": {
+            "off": null,
+            "minimal": "minimal",
+            "low": "low",
+            "medium": "medium",
+            "high": null,
+            "xhigh": "xhigh",
+            "max": null
+          },
+          "samplingParamsByThinkingLevel": {
+            "low": {
+              "reasoning_budget_tokens": 2048
+            },
+            "medium": {
+              "reasoning_budget_tokens": 6144
+            },
+            "xhigh": {
+              "reasoning_budget_tokens": 8192
+            }
+          }
         }
       ]
     }
-
   }
 }
