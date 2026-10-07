@@ -14,9 +14,10 @@
           "contextWindow": 64000,
           "maxTokens": 12000,
           "reasoning": true,
+          "_thinking": "This model's chat template (llama.cpp) validates reasoning_effort and only accepts low, medium, xhigh: 'off' or 'minimal' raise a Jinja exception (HTTP 500). So off/minimal are spelled as 'low' and thinking is turned off with chat_template_kwargs.enable_thinking=false, which this template understands (and Strata's OpenAI path also honors). It lives under the off/minimal keys of samplingParamsByThinkingLevel, so the real low/medium/xhigh caps are untouched; samplingParams is applied last and verbatim.",
           "thinkingLevelMap": {
-            "off": null,
-            "minimal": null,
+            "off": "low",
+            "minimal": "low",
             "low": "low",
             "medium": "medium",
             "high": null,
@@ -24,6 +25,16 @@
             "max": null
           },
           "samplingParamsByThinkingLevel": {
+            "off": {
+              "chat_template_kwargs": {
+                "enable_thinking": false
+              }
+            },
+            "minimal": {
+              "chat_template_kwargs": {
+                "enable_thinking": false
+              }
+            },
             "low": {
               "reasoning_budget_tokens": 2048
             },
@@ -51,9 +62,10 @@
           "maxTokens": 16384,
           "reasoning": true,
           "_comment": "The minimal thinking level is currently required for pi-web to summarize the session title since it disables thinking for Flash, otherwise the 24 tokens limit requested to the model fail and pi-web just do a text truncation.",
+          "_thinking": "minimal is mapped to Strata's own no-thinking spelling ('off') instead of 'minimal', so off and minimal produce identical requests: pi-web's title call (hardcoded reasoning: 'minimal', maxTokens 24) sends reasoning_effort 'off' and the 24 tokens go to the title. Setting minimal to null would hide it from the picker, but pi then clamps the title call upward to 'low', which thinks and truncates.",
           "thinkingLevelMap": {
             "off": "off",
-            "minimal": "minimal",
+            "minimal": "off",
             "low": "low",
             "medium": "medium",
             "high": null,
@@ -78,9 +90,10 @@
           "maxTokens": 16384,
           "reasoning": true,
           "_comment": "The minimal thinking level is currently required for pi-web to summarize the session title since it disables thinking for Flash, otherwise the 24 tokens limit requested to the model fail and pi-web just do a text truncation.",
+          "_thinking": "off stays null as you had it (so 'off' is not offered for the Coder); minimal covers the title call the same way. Set it to 'off' too if you want an explicit off level here.",
           "thinkingLevelMap": {
             "off": null,
-            "minimal": "minimal",
+            "minimal": "off",
             "low": "low",
             "medium": "medium",
             "high": null,
