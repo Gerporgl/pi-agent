@@ -33,11 +33,25 @@ node_major=$(curl -fsS https://nodejs.org/dist/index.json \
 	| jq -r '[.[] | select(.lts != false)][0].version' \
 	| sed 's/^v//' | cut -d. -f1)
 
-# Latest published versions of the npm packages
+# Latest published version of the pi agent npm package
 pi_version=$(curl -fsS "https://registry.npmjs.org/@earendil-works%2Fpi-coding-agent" \
 	| jq -r '."dist-tags".latest')
-pi_web_version=$(curl -fsS "https://registry.npmjs.org/@jmfederico%2Fpi-web" \
-	| jq -r '."dist-tags".latest')
+
+# pi-web comes from the vendored fork tarball (terminal list polling fix, see
+# vendor/pi-web/ and the `apps` stage in the Dockerfile), NOT from the npm
+# registry: its version is read from the tarball so the image tag, the
+# PI_WEB_VERSION build arg and the installed code always agree.
+pi_web_tgz="vendor/pi-web/jmfederico-pi-web-1.202610.1.tgz"
+pi_web_sha256="85e3d246d7bf52e1422a69d20db9d55a337e245eeed977584b713c67f6698c27"
+if [ ! -f "$pi_web_tgz" ]; then
+	echo "ERROR: missing $pi_web_tgz (vendored pi-web fork build)"
+	exit 1
+fi
+if ! echo "$pi_web_sha256  $pi_web_tgz" | sha256sum -c -; then
+	echo "ERROR: $pi_web_tgz does not match its expected sha256 ($pi_web_sha256)"
+	exit 1
+fi
+pi_web_version=$(tar -xOzf "$pi_web_tgz" package/package.json | sed -n 's/.*"version": "\(.*\)".*/\1/p')
 
 # Current stable Rust version (e.g. 1.98.1)
 rust_version=$(curl -fsS https://static.rust-lang.org/dist/channel-rust-stable.toml \
@@ -56,14 +70,14 @@ case "$(uname -m)" in
 	*) echo "ERROR: unsupported architecture: $(uname -m)"; exit 1 ;;
 esac
 
-if [[ ! "$node_major" =~ ^[0-9]+$ ]] || [[ -z "$pi_version" || "$pi_version" == "null" ]] || [[ -z "$pi_web_version" || "$pi_web_version" == "null" ]] || [[ ! "$rust_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || [[ ! "$godot_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+if [[ ! "$node_major" =~ ^[0-9]+$ ]] || [[ -z "$pi_version" || "$pi_version" == "null" ]] || [[ ! "$pi_web_version" =~ ^[0-9]+\.[0-9]+ ]] || [[ ! "$rust_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || [[ ! "$godot_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
 	echo "ERROR: Unable to get the latest versions! (node_major=$node_major pi_version=$pi_version pi_web_version=$pi_web_version rust_version=$rust_version godot_version=$godot_version)"
 	exit 1
 fi
 
 echo "node_major=$node_major"
 echo "pi_version=$pi_version"
-echo "pi_web_version=$pi_web_version"
+echo "pi_web_version=$pi_web_version (from $pi_web_tgz)"
 echo "rust_version=$rust_version"
 echo "godot_version=$godot_version"
 echo "target_arch=$target_arch"

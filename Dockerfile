@@ -221,17 +221,35 @@ RUN godot_doc_branch="${GODOT_VERSION%.*}" && \
 
 # Install the pi agent and pi-web (global npm, shared by all users).
 # node-pty (a pi-web dependency) needs the build toolchain from `base`.
+#
+# pi-web is installed from the VENDORED tarball in vendor/pi-web/, not from the
+# npm registry: it is the fork branch `fix/terminal-requested-terminal-reload-once`
+# (repo Gerporgl/pi-web) which fixes the terminal list polling storm that made
+# pi-web-sessiond burn CPU. The tarball is `npm pack` output, so it contains the
+# built dist/ (an `npm i -g github:...#branch` install would have NO dist/).
+# Do not hotpatch dist/ in a running container instead: the plugin package
+# revision is a sha256 over the whole package checked by both gateway and
+# session daemon, so a single edited file makes /api/plugins return 500.
 FROM base AS apps
 ARG PI_VERSION=0.85.1
-ARG PI_WEB_VERSION=1.202609.0
+# Must match the version inside the vendored tarball (checked below).
+ARG PI_WEB_VERSION=1.202610.1
 ARG TARGET_ARCH=x86_64-unknown-linux-gnu
+COPY vendor/pi-web/jmfederico-pi-web-1.202610.1.tgz /tmp/pi-web-local.tgz
 RUN case "${TARGET_ARCH}" in \
         x86_64*) esb_platform=linux-x64 ;; \
         aarch64*) esb_platform=linux-arm64 ;; \
         *) esb_platform=linux-x64 ;; \
     esac && \
+    # Fail early if the vendored tarball and the PI_WEB_VERSION build arg disagree,
+    # so image tag, build arg and installed code always describe the same code.
+    tar xOzf /tmp/pi-web-local.tgz package/package.json | grep -q "\"version\": \"${PI_WEB_VERSION}\"" && \
     npm install -g --ignore-scripts @earendil-works/pi-coding-agent@${PI_VERSION} && \
-    npm install -g @jmfederico/pi-web@${PI_WEB_VERSION} --allow-scripts=node-pty && \
+    npm install -g /tmp/pi-web-local.tgz --allow-scripts=node-pty && \
+    # The fix must be present in the installed copy (terminal panel reloads a
+    # requested terminal once per navigation intent instead of on every poll).
+    grep -q requestedTerminalReloadKey /usr/lib/node_modules/@jmfederico/pi-web/dist/pi-web-plugins/terminal/browser/pi-web-plugin.js && \
+    rm -f /tmp/pi-web-local.tgz && \
     # pi-coding-agent ships an npm-shrinkwrap.json that pins esbuild binaries for
     # every platform, and npm honors a bundled shrinkwrap verbatim (no platform
     # filtering), so prune all esbuild platform packages except the native one
