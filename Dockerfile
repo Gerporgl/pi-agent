@@ -22,8 +22,17 @@
 # Assembly rule: in `runtime`, `COPY --from:` the rarely-updated components
 # FIRST (rust) and the frequently updated ones LAST (apps), because
 # the linear rule still applies inside the assembly stage.
+#
+# EVERY STAGE IS A REAL IMAGE (same pattern as the llama-lxc project):
+# build.sh builds one stage at a time with `--target <stage> -t <image>:latest`,
+# and each downstream stage refers to the *built image* (`FROM <image>:latest`,
+# `COPY --from=<image>:latest`) instead of the in-file stage name. Intermediate
+# stages therefore end up with a real tag in the image store, so
+# `podman image prune` (which drops untagged/dangling layers) cannot delete the
+# cached layers of a component that was not rebuilt.
 
 # Use ubuntu as base, it works best with lxc and systemd tty console and shutdown
+# (build.sh tags the result of this stage as pi-agent-base:latest)
 FROM ubuntu:26.04 AS base
 
 # Versions passed as build args by build.sh (defaults are the current ones, so a plain `docker build .` still works).
@@ -144,7 +153,7 @@ RUN curl -fsSL https://deb.nodesource.com/setup_${NODE_MAJOR}.x | bash - && \
 # including the musl target for building fully static, libc-independent binaries
 # (the musl target is self-contained: it bundles its own static musl libc,
 # so no distro musl packages are needed)
-FROM base AS rust
+FROM pi-agent-base:latest AS rust
 ARG RUST_VERSION=1.98.1
 ARG TARGET_ARCH=x86_64-unknown-linux-gnu
 RUN curl -sSfLO "https://static.rust-lang.org/dist/rust-${RUST_VERSION}-${TARGET_ARCH}.tar.gz" && \
@@ -166,7 +175,7 @@ RUN curl -sSfLO "https://static.rust-lang.org/dist/rust-${RUST_VERSION}-${TARGET
 # server is available, so plain `godot --path <project>` usage and CI work on
 # headless machines. There is intentionally NO Godot MCP server in the image:
 # projects are created/edited as plain files and driven through the CLI.
-FROM base AS godot
+FROM pi-agent-base:latest AS godot
 ARG GODOT_VERSION=4.7.2
 ARG TARGET_ARCH=x86_64-unknown-linux-gnu
 RUN case "${TARGET_ARCH}" in \
@@ -231,7 +240,7 @@ RUN godot_doc_branch="${GODOT_VERSION%.*}" && \
 # Do not hotpatch dist/ in a running container instead: the plugin package
 # revision is a sha256 over the whole package checked by both gateway and
 # session daemon, so a single edited file makes /api/plugins return 500.
-FROM base AS apps
+FROM pi-agent-base:latest AS apps
 ARG PI_VERSION=0.85.1
 # Must match the version inside the vendored tarball (checked below).
 ARG PI_WEB_VERSION=1.202610.1
@@ -273,10 +282,10 @@ RUN case "${TARGET_ARCH}" in \
 # --- Assembly ---
 # Start from the Godot stage (its layers are the biggest and change the least)
 # and copy in the others, rarely-updated first.
-FROM godot AS runtime
-COPY --from=rust /usr/local /usr/local
-COPY --from=apps /usr/lib/node_modules /usr/lib/node_modules
-COPY --from=apps /etc/pi-agent/npm-bins.tsv /etc/pi-agent/npm-bins.tsv
+FROM pi-agent-godot:latest AS runtime
+COPY --from=pi-agent-rust:latest /usr/local /usr/local
+COPY --from=pi-agent-apps:latest /usr/lib/node_modules /usr/lib/node_modules
+COPY --from=pi-agent-apps:latest /etc/pi-agent/npm-bins.tsv /etc/pi-agent/npm-bins.tsv
 # Recreate the npm global bin links and the export-templates symlink (COPY
 # dereferences symlinks, so they have to be re-created, not copied).
 RUN while IFS="$(printf '\t')" read -r link target; do ln -sfn "$target" "$link"; done < /etc/pi-agent/npm-bins.tsv && \
@@ -290,7 +299,7 @@ RUN while IFS="$(printf '\t')" read -r link target; do ln -sfn "$target" "$link"
 # --- Final stage: config + OCI metadata ---
 # IMAGE_VERSION changes on every build, so it is quarantined here: this stage
 # only holds cheap COPY/RUN steps and never invalidates the layers above.
-FROM runtime AS final
+FROM pi-agent-runtime:latest AS final
 
 # Full component version tag (e.g. node-24-pi-0.86.1-pi-web-1.202609.0-rust-1.98.1-godot-4.7.2),
 # stored as the image version so `podman inspect`/quadlet scripts can read it at runtime.

@@ -45,20 +45,25 @@ It runs `CT_TOOL=docker ./build.sh --build-ghcr` (adding `--force` when dispatch
 
 ### Multi-stage layout and cache rules (important when editing the Dockerfile)
 
-Each component is its own stage and declares **only** the build args it consumes:
+Each component is its own stage and declares **only** the build args it consumes.
+**Each stage is built separately (`--target <stage>`) and tagged `pi-agent-<stage>:latest`**,
+and downstream stages refer to those *images* (`FROM pi-agent-base:latest`,
+`COPY --from=pi-agent-rust:latest`) rather than the in-file stage names — same
+pattern as `~/llama-lxc`. Intermediate stages therefore survive
+`podman image prune` as real tagged images instead of becoming untagged layers.
 
-| Stage | Contents | Args declared |
+| Stage → tag | Contents | Args declared |
 |---|---|---|
-| `base` | apt layer, `agent` user setup, Node.js (NodeSource, apt) | `NODE_MAJOR` |
-| `rust` | Rust toolchain + musl std | `RUST_VERSION`, `TARGET_ARCH` |
-| `godot` | engine, wrapper, export templates, official docs | `GODOT_VERSION`, `TARGET_ARCH` |
-| `apps` | pi (npm) + pi-web (from `vendor/pi-web/*.tgz`) npm installs (esbuild/relays pruning) + `/etc/pi-agent/npm-bins.tsv` generation | `PI_VERSION`, `PI_WEB_VERSION`, `TARGET_ARCH` |
+| `base` → `pi-agent-base:latest` | apt layer, `agent` user setup, Node.js (NodeSource, apt) | `NODE_MAJOR` |
+| `rust` → `pi-agent-rust:latest` | Rust toolchain + musl std | `RUST_VERSION`, `TARGET_ARCH` |
+| `godot` → `pi-agent-godot:latest` | engine, wrapper, export templates, official docs | `GODOT_VERSION`, `TARGET_ARCH` |
+| `apps` → `pi-agent-apps:latest` | pi (npm) + pi-web (from `vendor/pi-web/*.tgz`) npm installs (esbuild/relays pruning) + `/etc/pi-agent/npm-bins.tsv` generation | `PI_VERSION`, `PI_WEB_VERSION`, `TARGET_ARCH` |
+| `runtime` → `pi-agent-runtime:latest` | assembly (`FROM pi-agent-godot:latest` + `COPY --from=pi-agent-rust:latest` then `pi-agent-apps:latest`) | none |
+| `final` → `pi-agent:latest` + version tag | systemd units, `/etc/pi-web`, `/etc/pi-agent/home`, OCI label | `IMAGE_VERSION` |
 | `vendor/pi-web/` | **Vendored pi-web tarball** (fork build, terminal polling fix); installed by the `apps` stage, version + sha256 verified by `build.sh` |
-| `runtime` | assembly: `FROM godot` + `COPY --from=rust` then `COPY --from=apps` | none |
-| `final` | systemd units, `/etc/pi-web`, `/etc/pi-agent/home`, OCI label | `IMAGE_VERSION` |
-
 Keep these invariants when changing it:
 
+- **Every stage keeps its `pi-agent-<stage>:latest` tag** (in both the Dockerfile `FROM`/`COPY --from=` lines and `build.sh`'s `build_stage` calls); short unprefixed names fail under podman (`short-name ... did not resolve to an alias`).
 - **Never declare a version `ARG` globally.** podman/buildah busts *every* layer of a stage when any arg declared in that stage changes, even unused ones and layers above it; a global `IMAGE_VERSION`/`PI_VERSION` at the top makes every build a full rebuild.
 - **Layer caching is linear**: in `runtime`, `COPY --from:` the rare components first (`rust`) and the frequent ones last (`apps`). In `final`, keep the ever-changing `LABEL` in that stage only.
 - **`COPY` dereferences symlinks.** The npm global bin links (`pi`, `pi-web`) are re-created in `runtime` from `/etc/pi-agent/npm-bins.tsv` generated in the `apps` stage, and the root export-templates symlink is re-created too — do not try to `COPY` them.

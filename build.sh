@@ -115,18 +115,47 @@ echo "$rust_version" > rust_version.txt
 echo "$godot_version" > godot_version.txt
 echo "$tag" > pi_agent_tag.txt
 
-# Build args map 1:1 to the Dockerfile stages: each version arg is declared
-# only in the stage that consumes it, so bumping one component only rebuilds
-# that stage (podman busts every layer of a stage when any arg declared in it
-# changes, which is why the args must not be declared globally).
+# --- Build one stage at a time, each tagged :latest ---
+# Same layout as the llama-lxc project: every stage is built with --target and
+# tagged <name>:latest, and the Dockerfile refers to those *images* (FROM
+# pi-agent-<stage>:latest / COPY --from=pi-agent-<stage>:latest). Intermediate
+# stages then exist as real tagged images, so `podman image prune` (or
+# `docker image prune`) can drop the untagged leftovers without destroying the
+# cached layers of the components that were not rebuilt.
+# Build args map 1:1 to the stages that declare them: bumping one component
+# only rebuilds that stage (podman busts every layer of a stage when any arg
+# declared in it changes, which is why args are never declared globally).
 # IMAGE_VERSION changes on every build but is quarantined in the last stage.
-DOCKER_BUILDKIT=1 $command build \
-	--build-arg IMAGE_VERSION="$tag" \
-	--build-arg NODE_MAJOR="$node_major" \
+build_stage() {
+	local stage=$1 image=$2
+	shift 2
+	echo "--- build stage $stage -> $image:latest ---"
+	DOCKER_BUILDKIT=1 $command build \
+		--target "$stage" \
+		"$@" \
+		-t "$image:latest" \
+		.
+}
+
+build_stage base pi-agent-base \
+	--build-arg NODE_MAJOR="$node_major"
+
+build_stage rust pi-agent-rust \
+	--build-arg RUST_VERSION="$rust_version" \
+	--build-arg TARGET_ARCH="$target_arch"
+
+build_stage godot pi-agent-godot \
+	--build-arg GODOT_VERSION="$godot_version" \
+	--build-arg TARGET_ARCH="$target_arch"
+
+build_stage apps pi-agent-apps \
 	--build-arg PI_VERSION="$pi_version" \
 	--build-arg PI_WEB_VERSION="$pi_web_version" \
-	--build-arg RUST_VERSION="$rust_version" \
-	--build-arg GODOT_VERSION="$godot_version" \
-	--build-arg TARGET_ARCH="$target_arch" \
-	-t pi-agent:latest \
-	-t "pi-agent:$tag" .
+	--build-arg TARGET_ARCH="$target_arch"
+
+# Assembly: copies from the already tagged pi-agent-rust/pi-agent-apps images
+build_stage runtime pi-agent-runtime
+
+build_stage final pi-agent \
+	--build-arg IMAGE_VERSION="$tag" \
+	-t "pi-agent:$tag"

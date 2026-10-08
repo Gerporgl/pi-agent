@@ -19,9 +19,13 @@ The entire container project was coded mostly by the pi agent itself (which also
 ## Building
 
 ```bash
-./build.sh            # builds pi-agent:latest (uses podman if available, else docker)
+./build.sh            # builds every stage + pi-agent:latest (podman if available, else docker)
 ./build_and_run.sh    # build + local run
 ```
+
+`build.sh` builds **one stage at a time** (`--target <stage> -t pi-agent-<stage>:latest`),
+so each stage is a real tagged image in the local store — see "Build stages and
+cache reuse" below.
 The image tag encodes all component versions (e.g. `node-24-pi-0.86.1-pi-web-1.202609.0-rust-1.98.1-godot-4.7.2`) and is also embedded in the image itself as the `org.opencontainers.image.version` OCI label, so it can be read at runtime without knowing the tag:
 
 ```bash
@@ -68,14 +72,24 @@ The Dockerfile is a **multi-stage build**: each component is its own stage and
 declares *only* the build args it consumes, so bumping one component rebuilds
 only that stage and reuses the rest from the local layer cache.
 
-| Stage | Contents | Args it declares | Changes |
-|---|---|---|---|
-| `base` | apt layer, user setup, Node.js runtime | `NODE_MAJOR` | rare |
-| `rust` | Rust toolchain + musl target | `RUST_VERSION`, `TARGET_ARCH` | rare |
-| `godot` | engine + export templates + docs | `GODOT_VERSION`, `TARGET_ARCH` | rare |
-| `apps` | pi (npm) + pi-web (vendored fork tarball) + npm bin list | `PI_VERSION`, `PI_WEB_VERSION`, `TARGET_ARCH` | frequent |
-| `runtime` | assembly (`COPY --from=`) | — | — |
-| `final` | service files, config, OCI label | `IMAGE_VERSION` | every build |
+| Stage (`--target`) | Tagged image | Contents | Args it declares | Changes |
+|---|---|---|---|---|
+| `base` | `pi-agent-base:latest` | apt layer, user setup, Node.js runtime | `NODE_MAJOR` | rare |
+| `rust` | `pi-agent-rust:latest` | Rust toolchain + musl target | `RUST_VERSION`, `TARGET_ARCH` | rare |
+| `godot` | `pi-agent-godot:latest` | engine + export templates + docs | `GODOT_VERSION`, `TARGET_ARCH` | rare |
+| `apps` | `pi-agent-apps:latest` | pi (npm) + pi-web (vendored fork tarball) + npm bin list | `PI_VERSION`, `PI_WEB_VERSION`, `TARGET_ARCH` | frequent |
+| `runtime` | `pi-agent-runtime:latest` | assembly (`COPY --from=`) | — | — |
+| `final` | `pi-agent:latest` + `pi-agent:<version tag>` | service files, config, OCI label | `IMAGE_VERSION` | every build |
+
+Each stage is built and tagged separately, and downstream stages refer to the
+**built images** (`FROM pi-agent-base:latest`, `COPY --from=pi-agent-rust:latest`,
+…) instead of the in-file stage names — the same pattern as the `llama-lxc`
+project. Because every intermediate stage carries a real tag, `podman image
+prune` / `docker image prune` cannot throw away the layers of a component that
+was not rebuilt: pruning untagged leftovers keeps the cache intact, and the
+next build reuses those tagged images. `pi-agent-runtime:latest` is the
+assembled toolchain before the service/config layers, `pi-agent:latest` (plus
+the version tag) is the final image.
 
 Two container-build rules drive this layout:
 
