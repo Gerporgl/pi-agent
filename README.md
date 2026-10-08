@@ -10,7 +10,7 @@ The entire container project was coded mostly by the pi agent itself (which also
 
   `ripgrep` and `fd-find` are installed on purpose: pi's `grep`/`find` tools search `PATH` for `rg` and `fd`/`fdfind` and otherwise download the binaries from GitHub into `~/.pi/agent/bin/` on first session start. With the apt packages present, no download ever happens (so the image also works with `PI_OFFLINE`/`pi --offline`). A `~/.pi/agent/bin/fd` downloaded by an older image takes precedence over the apt one; delete it if you want the packaged version.
 - **Rust+Cargo**: Always the latest rust stable release, bundled with musl so the agent can build static binaries without any libc dependency
-- **Godot**: the [Godot engine](https://godotengine.org) (headless-capable) is installed system-wide; the real binary lives at `/usr/local/lib/godot/godot` and `/usr/local/bin/godot` is a thin wrapper that auto-adds `--headless` when no display server is available, so MCP `run_project` and CI work headlessly. It ships together with the [`@coding-solo/godot-mcp`](https://www.npmjs.com/package/@coding-solo/godot-mcp) MCP server (global npm) and the official [Godot documentation](https://github.com/godotengine/godot-docs) (reStructuredText, version-matched to the engine) at `/usr/local/share/godot-docs`. pi (>= 0.99) has native MCP support, so no adapter package is needed.
+- **Godot**: the [Godot engine](https://godotengine.org) (headless-capable) is installed system-wide; the real binary lives at `/usr/local/lib/godot/godot` and `/usr/local/bin/godot` is a thin wrapper that auto-adds `--headless` when no display server is available, so plain `godot --path <project>` usage and CI work headlessly. It ships together with the official [Godot documentation](https://github.com/godotengine/godot-docs) (reStructuredText, version-matched to the engine) at `/usr/local/share/godot-docs`. Projects are created/edited as plain text files and driven through the CLI with bash: **no Godot MCP server is installed** (a `godot-mcp` server used to ship; it was removed after too many issues — CLI + headless mode proved more reliable).
 - **Init**: full `systemd` as entrypoint (`/sbin/init`), with `pi-web` and `pi-web-sessiond` managed as systemd services. Works well on Proxmox LXC (full TTY console, clean shutdown) and in nested podman containers.
 - **Users**: pi-agent and pi-web run as the unprivileged `agent` user. `openssh-server` is installed for administrative SSH access (as `root`, running on **port 2223**, you'll need to mount your authorized_keys, or set a root password, see run.sh code).
 - **Persistence**: agent/web state lives under `/home/agent`, which is intended to be bind-mounted (see `home-data/` for a reference layout). Put your own `~/.pi/agent/models.json` (and other pi configs) in that mounted volume.
@@ -73,23 +73,23 @@ only that stage and reuses the rest from the local layer cache.
 | `base` | apt layer, user setup, Node.js runtime | `NODE_MAJOR` | rare |
 | `rust` | Rust toolchain + musl target | `RUST_VERSION`, `TARGET_ARCH` | rare |
 | `godot` | engine + export templates + docs | `GODOT_VERSION`, `TARGET_ARCH` | rare |
-| `apps` | pi (npm) + pi-web (vendored fork tarball) | `PI_VERSION`, `PI_WEB_VERSION`, `TARGET_ARCH` | frequent |
-| `mcp` | `godot-mcp` npm install | `GODOT_MCP_VERSION` | rare |
+| `apps` | pi (npm) + pi-web (vendored fork tarball) + npm bin list | `PI_VERSION`, `PI_WEB_VERSION`, `TARGET_ARCH` | frequent |
 | `runtime` | assembly (`COPY --from=`) | — | — |
 | `final` | service files, config, OCI label | `IMAGE_VERSION` | every build |
 
 Two container-build rules drive this layout:
 
 1. Layer caching is **linear**: a changed instruction busts that layer and
-everything after it. That is why the assembly stage copies the rarely-updated
-components first (`rust`, `godot`) and the frequent ones last (`mcp`), and why
-the ever-changing `IMAGE_VERSION` label is quarantined in the last stage.
+everything after it. That is why the assembly stage starts from `godot` and
+copies the rarely-updated component first (`rust`) and the frequent one last
+(`apps`), and why the ever-changing `IMAGE_VERSION` label is quarantined in the
+last stage.
 2. **podman/buildah busts every layer of a stage** when any build arg
 *declared in that stage* changes — even layers above it, even if unused there.
 So version args must never be declared globally at the top of the file.
 
 Measured on a local podman 5.7 build (full cold build ≈ 6 min / 3.95 GB image):
-a pi version bump re-runs only `apps` + `mcp` + assembly + final — the apt,
+a pi version bump re-runs only `apps` + assembly + final — the apt,
 Node, Rust (450 MB download) and Godot (1.36 GB download) layers all come from
 cache, ≈ 24 s.
 
@@ -122,20 +122,21 @@ If your persistent home folder was created with an older image (when the user wa
 
 It renames pi session directories under `.pi/agent/sessions/` (`--home-ubuntu-*` → `--home-agent-*`), rewrites `/home/ubuntu` → `/home/agent` in the pi / pi-web state files (`trust.json`, `projects.json`, `archived-sessions.json`, `session-unread.json`, `sessiond-owner.json`), and updates the session header (first line) of each `*.jsonl` so its `cwd` matches the new project path — pi matches sessions to projects by that header field. The conversation lines inside `*.jsonl` files are left untouched. The script is idempotent (safe to re-run, e.g. to finish a partially completed migration) and refuses to run against the agent's own live home.
 
-## Godot & MCP tools
+## Godot (headless CLI)
 
-The image ships the Godot engine (headless), the official Godot export templates (Linux x86/arm32 + Windows x86), the official Godot documentation (reStructuredText, version-matched to the engine) at `/usr/local/share/godot-docs`, the `godot-mcp` MCP server as system-wide layers. On every boot, `pi-home-init.service` ingests the small per-home config into `/home/agent`. The godot skill files are system-managed and always synced from the image (so image upgrades reach pre-existing homes; customise in your own skill folder instead of editing them); everything else is only ingested if missing, so user edits are never clobbered:
+The image ships the Godot engine (headless), the official Godot export templates (Linux x86/arm32 + Windows x86) and the official Godot documentation (reStructuredText, version-matched to the engine) at `/usr/local/share/godot-docs`, as system-wide layers. Godot work is done with plain files + bash + `godot --headless`; **no Godot MCP server is installed** (the `godot-mcp` package and its default `~/.pi/agent/mcp.json` were removed — too many issues, the CLI/headless path is more reliable). If you want MCP servers, create your own `~/.pi/agent/mcp.json`; nothing is ingested there anymore.
 
-- `~/.pi/agent/mcp.json` — default MCP config declaring the `godot` server with a `description` (shown in pi's system prompt and used to rank its tools in tool search; only if you haven't created your own)
-- `~/.pi/agent/skills/godot/SKILL.md` — a skill describing the godot MCP tools and the local documentation (always synced from the image)
+On every boot, `pi-home-init.service` ingests the small per-home config into `/home/agent`. The godot skill files are system-managed and always synced from the image (so image upgrades reach pre-existing homes; customise in your own skill folder instead of editing them); everything else is only ingested if missing, so user edits are never clobbered:
+
+- `~/.pi/agent/skills/godot/SKILL.md` — a skill describing the headless CLI workflow and the local documentation (always synced from the image)
 - `~/.pi/agent/skills/godot/export_presets.cfg.example` — a ready-to-use preset file for headless Linux/Windows exports (always synced from the image)
 - `~/.local/share/godot/export_templates` — symlink to the system-wide export templates (only if you haven't provided your own)
 
-The godot `SKILL.md` (ingested into the agent home) tells the agent where the local documentation lives and how to navigate it: `index.rst` is the master index, `tutorials/` holds the topic guides, and `classes/` is the full API reference (one `.rst` per class). The agent typically greps it with `rg` and reads the matching pages.
+The godot `SKILL.md` (synced into the agent home) tells the agent where the local documentation lives and how to navigate it: `index.rst` is the master index, `tutorials/` holds the topic guides (including the command-line reference), and `classes/` is the full API reference (one `.rst` per class). The agent typically greps it with `rg` and reads the matching pages.
 
-In pi, the godot MCP tools are deferred tools in the `mcp__godot` namespace: load them with `tool_search({ "query": "godot" })`, then call them directly, e.g. `mcp__godot__run_project({ "projectPath": "..." })`. For tasks the MCP tools don't cover, use `godot --headless` directly (the wrapper adds `--headless` automatically when no display is present).
+The skill makes the **local documentation the source of truth**: the agent must check `godot --version`, look up classes and CLI flags in `/usr/local/share/godot-docs` before writing Godot-specific code, and must go back to the docs immediately when something does not work instead of retrying from memory — training knowledge of another Godot version (4.4, 4.3, …) is not the installed engine and its API differs.
 
-Because the official export templates are installed, you can export Linux and Windows Desktop releases headlessly from the CLI: copy `~/.pi/agent/skills/godot/export_presets.cfg.example` into the project as `export_presets.cfg` (edit the `export_path` values), then `godot --headless --path <project> --export-release "Linux" build/linux` / `--export-release "Windows Desktop" build/windows.exe`.
+Because the official export templates are installed, Linux and Windows Desktop releases can be exported headlessly from the CLI: copy `~/.pi/agent/skills/godot/export_presets.cfg.example` into the project as `export_presets.cfg` (edit the `export_path` values), then `godot --headless --path <project> --export-release "Linux" build/linux` / `--export-release "Windows Desktop" build/windows.exe`.
 
 ## Notes
 

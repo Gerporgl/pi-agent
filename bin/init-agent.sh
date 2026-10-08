@@ -8,19 +8,14 @@ else
 fi
 
 # Ingest the system-provided pi config into the agent home (idempotent, every
-# boot). The heavy pieces live in system-wide image layers (godot binary,
-# global godot-mcp bin); only these small files are ingested per home, so
+# boot). The heavy pieces live in system-wide image layers (godot binary, godot
+# docs, export templates); only these small files are ingested per home, so
 # upgraded containers with a pre-existing home volume need no downloads at
 # runtime.
+# Note: no default mcp.json is shipped anymore (the Godot MCP server was
+# removed; Godot projects are driven with bash + `godot --headless`). If you
+# add your own MCP servers, create ~/.pi/agent/mcp.json yourself.
 STUB=/etc/pi-agent/home
-
-# Default MCP config (godot server). Only ingested if the user has not
-# created their own, so user edits are never clobbered on upgrades.
-if [ ! -f /home/agent/.pi/agent/mcp.json ]; then
-    mkdir -p /home/agent/.pi/agent
-    cp "$STUB/.pi/agent/mcp.json" /home/agent/.pi/agent/mcp.json
-    echo "Ingested default MCP config."
-fi
 
 # Godot skill (system-managed). Synced from the image on every boot so that
 # image upgrades reach pre-existing home volumes. Files are only rewritten

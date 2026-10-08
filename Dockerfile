@@ -14,14 +14,13 @@
 #   base     ubuntu + apt layer + user setup + Node.js runtime  (rarely changes)
 #   rust     Rust toolchain + musl target            (ARG RUST_VERSION)
 #   godot    engine + export templates + docs        (ARG GODOT_VERSION)
-#   apps     pi + pi-web npm installs                (ARG PI_VERSION/PI_WEB_VERSION)
-#   mcp      godot-mcp npm install                   (ARG GODOT_MCP_VERSION)
-#   runtime  assembly: godot tree + rust + apps/mcp
+#   apps     pi + pi-web npm installs + npm bin list  (ARG PI_VERSION/PI_WEB_VERSION)
+#   runtime  assembly: godot tree + rust + apps
 #   final    service files, config, OCI version label (ARG IMAGE_VERSION, which
 #            changes on EVERY build, so it is quarantined in this last stage)
 #
 # Assembly rule: in `runtime`, `COPY --from:` the rarely-updated components
-# FIRST (rust, godot) and the frequently updated ones LAST (apps/mcp), because
+# FIRST (rust) and the frequently updated ones LAST (apps), because
 # the linear rule still applies inside the assembly stage.
 
 # Use ubuntu as base, it works best with lxc and systemd tty console and shutdown
@@ -164,7 +163,9 @@ RUN curl -sSfLO "https://static.rust-lang.org/dist/rust-${RUST_VERSION}-${TARGET
 # static; its runtime dlopens (fontconfig, vulkan) are covered by the apt layer.
 # The real binary goes to /usr/local/lib/godot/godot; /usr/local/bin/godot is a
 # wrapper (bin/godot-wrapper.sh) that auto-adds --headless when no display
-# server is available, so MCP run_project and CI work on headless machines.
+# server is available, so plain `godot --path <project>` usage and CI work on
+# headless machines. There is intentionally NO Godot MCP server in the image:
+# projects are created/edited as plain files and driven through the CLI.
 FROM base AS godot
 ARG GODOT_VERSION=4.7.2
 ARG TARGET_ARCH=x86_64-unknown-linux-gnu
@@ -261,21 +262,10 @@ RUN case "${TARGET_ARCH}" in \
     rm -Rf /usr/lib/node_modules/@jmfederico/pi-web/dist/pi-packages/relays/ && \
     # Clean up build caches (npm cache + node-gyp headers downloaded for node-pty)
     npm cache clean --force && \
-    rm -rf /root/.cache /root/.npm
-
-# Install the Godot MCP server system-wide (global npm, shared by all users).
-# Chained on `apps` so the global npm tree stays a single consistent tree
-# (npm rewrites /usr/lib/node_modules/... globally); a pi/pi-web bump only
-# re-runs this tiny install.
-FROM apps AS mcp
-ARG GODOT_MCP_VERSION=0.1.1
-RUN npm install -g @coding-solo/godot-mcp@${GODOT_MCP_VERSION} && \
-    command -v godot-mcp && \
-    npm cache clean --force && \
-    rm -rf /root/.npm && \
+    rm -rf /root/.cache /root/.npm && \
     # Record the global npm bin symlinks so the assembly stage can recreate
-    # them: COPY dereferences symlinks, so `pi`, `pi-web`, `godot-mcp`, `npm`...
-    # cannot be carried over as links by COPY --from.
+    # them: COPY dereferences symlinks, so `pi`, `pi-web`, `npm`... cannot be
+    # carried over as links by COPY --from.
     mkdir -p /etc/pi-agent && \
     find /usr/bin -maxdepth 1 -type l -printf '%p\t%l\n' | grep node_modules > /etc/pi-agent/npm-bins.tsv && \
     cat /etc/pi-agent/npm-bins.tsv
@@ -285,8 +275,8 @@ RUN npm install -g @coding-solo/godot-mcp@${GODOT_MCP_VERSION} && \
 # and copy in the others, rarely-updated first.
 FROM godot AS runtime
 COPY --from=rust /usr/local /usr/local
-COPY --from=mcp /usr/lib/node_modules /usr/lib/node_modules
-COPY --from=mcp /etc/pi-agent/npm-bins.tsv /etc/pi-agent/npm-bins.tsv
+COPY --from=apps /usr/lib/node_modules /usr/lib/node_modules
+COPY --from=apps /etc/pi-agent/npm-bins.tsv /etc/pi-agent/npm-bins.tsv
 # Recreate the npm global bin links and the export-templates symlink (COPY
 # dereferences symlinks, so they have to be re-created, not copied).
 RUN while IFS="$(printf '\t')" read -r link target; do ln -sfn "$target" "$link"; done < /etc/pi-agent/npm-bins.tsv && \
@@ -294,8 +284,8 @@ RUN while IFS="$(printf '\t')" read -r link target; do ln -sfn "$target" "$link"
     ln -sfn /usr/local/share/godot/export_templates /root/.local/share/godot/export_templates && \
     # Smoke-test the assembled toolchain
     godot --version && rustc --version && cargo --version && node --version && npm --version && \
-    command -v godot-mcp && command -v pi && command -v pi-web && \
-    ls -l /usr/bin/pi /usr/bin/pi-web /usr/bin/godot-mcp
+    command -v pi && command -v pi-web && \
+    ls -l /usr/bin/pi /usr/bin/pi-web
 
 # --- Final stage: config + OCI metadata ---
 # IMAGE_VERSION changes on every build, so it is quarantined here: this stage

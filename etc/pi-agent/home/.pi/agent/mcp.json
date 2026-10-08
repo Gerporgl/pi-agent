@@ -1,9 +1,0 @@
-{
-  "mcpServers": {
-    "godot": {
-      "command": "godot-mcp",
-      "exposure": "deferred",
-      "description": "Run Godot projects headlessly, capture debug output, manage scenes and nodes"
-    }
-  }
-}
