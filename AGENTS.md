@@ -48,8 +48,7 @@ It runs `CT_TOOL=docker ./build.sh --build-ghcr` (adding `--force` when dispatch
 Each component is its own stage and declares **only** the build args it consumes.
 **Each stage is built separately (`--target <stage>`) and tagged `pi-agent-<stage>:latest`**,
 and downstream stages refer to those *images* (`FROM pi-agent-base:latest`,
-`COPY --from=pi-agent-rust:latest`) rather than the in-file stage names — same
-pattern as `~/llama-lxc`. Intermediate stages therefore survive
+`COPY --from=pi-agent-rust:latest`). Intermediate stages therefore survive
 `podman image prune` as real tagged images instead of becoming untagged layers.
 
 | Stage → tag | Contents | Args declared |

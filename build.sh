@@ -102,16 +102,12 @@ echo "$godot_version" > godot_version.txt
 echo "$tag" > pi_agent_tag.txt
 
 # --- Build one stage at a time, each tagged :latest ---
-# Same layout as the llama-lxc project: every stage is built with --target and
+# Every stage is built with --target and
 # tagged <name>:latest, and the Dockerfile refers to those *images* (FROM
 # pi-agent-<stage>:latest / COPY --from=pi-agent-<stage>:latest). Intermediate
 # stages then exist as real tagged images, so `podman image prune` (or
 # `docker image prune`) can drop the untagged leftovers without destroying the
 # cached layers of the components that were not rebuilt.
-# Build args map 1:1 to the stages that declare them: bumping one component
-# only rebuilds that stage (podman busts every layer of a stage when any arg
-# declared in it changes, which is why args are never declared globally).
-# IMAGE_VERSION changes on every build but is quarantined in the last stage.
 build_stage() {
 	local stage=$1 image=$2
 	shift 2

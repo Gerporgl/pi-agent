@@ -45,8 +45,8 @@ only that stage and reuses the rest from the local layer cache.
 
 Each stage is built and tagged separately, and downstream stages refer to the
 **built images** (`FROM pi-agent-base:latest`, `COPY --from=pi-agent-rust:latest`,
-…) instead of the in-file stage names — the same pattern as the `llama-lxc`
-project. Because every intermediate stage carries a real tag, `podman image
+…) instead of the in-file stage names.
+Because every intermediate stage carries a real tag, `podman image
 prune` / `docker image prune` cannot throw away the layers of a component that
 was not rebuilt: pruning untagged leftovers keeps the cache intact, and the
 next build reuses those tagged images. `pi-agent-runtime:latest` is the

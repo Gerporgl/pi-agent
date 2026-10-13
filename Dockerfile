@@ -23,7 +23,7 @@
 # FIRST (rust) and the frequently updated ones LAST (apps), because
 # the linear rule still applies inside the assembly stage.
 #
-# EVERY STAGE IS A REAL IMAGE (same pattern as the llama-lxc project):
+# EVERY STAGE IS A REAL IMAGE
 # build.sh builds one stage at a time with `--target <stage> -t <image>:latest`,
 # and each downstream stage refers to the *built image* (`FROM <image>:latest`,
 # `COPY --from=<image>:latest`) instead of the in-file stage name. Intermediate
