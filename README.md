@@ -28,40 +28,6 @@ The image tag encodes all component versions (e.g. `node-24-pi-0.86.1-pi-web-1.2
 podman image inspect --format '{{index .Labels "org.opencontainers.image.version"}}' pi-agent:latest
 ```
 
-### Vendored pi-web build (terminal polling fix)
-
-`pi-web` is **not** installed from the npm registry. The `apps` stage installs
-the vendored tarball `vendor/pi-web/jmfederico-pi-web-1.202610.1.tgz`, a build
-of the fork branch `fix/terminal-requested-terminal-reload-once`
-(`github.com/Gerporgl/pi-web`) which fixes the terminal list polling storm that
-made `pi-web-sessiond` burn CPU. `build.sh` verifies the tarball's sha256, reads
-its version from `package/package.json` (so tag, `PI_WEB_VERSION` and the
-installed code always agree), and the Dockerfile fails the build if the tarball
-version mismatches the build arg or if the fix is missing from the installed
-copy.
-
-Why a vendored tarball: the tarball is `npm pack` output, so it contains the
-built `dist/` (`npm i -g github:Gerporgl/pi-web#branch` installs **without**
-`dist/` and is broken). Never hotpatch `/usr/lib/node_modules/@jmfederico/pi-web/dist/`
-in a running container instead: the plugin package revision is a sha256 over the
-whole package checked by both the gateway and the session daemon, and the
-terminal plugin is a required manifest entry — editing one file makes
-`/api/plugins` return 500 and breaks the whole UI.
-
-To update the fork build, re-pack it and change filename, both hashes
-(`build.sh` + this section), the `COPY` line and the `PI_WEB_VERSION` default
-together:
-
-```bash
-cd /home/agent/github-pi-web/pi-web && git checkout fix/terminal-requested-terminal-reload-once && git pull
-npm ci && npm run verify
-npm pack --pack-destination ../tarball        # runs prepack -> full build
-cp ../tarball/jmfederico-pi-web-<version>.tgz <repo>/vendor/pi-web/ && sha256sum <repo>/vendor/pi-web/*.tgz
-```
-
-Once the fix lands in the published upstream package, revert to the registry
-install in `build.sh` + `apps` and delete `vendor/pi-web/`.
-
 ### Build stages and cache reuse
 
 The Dockerfile is a **multi-stage build**: each component is its own stage and
@@ -73,7 +39,7 @@ only that stage and reuses the rest from the local layer cache.
 | `base` | `pi-agent-base:latest` | apt layer, user setup, Node.js runtime | `NODE_MAJOR` | rare |
 | `rust` | `pi-agent-rust:latest` | Rust toolchain + musl target | `RUST_VERSION`, `TARGET_ARCH` | rare |
 | `godot` | `pi-agent-godot:latest` | engine + export templates + docs | `GODOT_VERSION`, `TARGET_ARCH` | rare |
-| `apps` | `pi-agent-apps:latest` | pi (npm) + pi-web (vendored fork tarball) + npm bin list | `PI_VERSION`, `PI_WEB_VERSION`, `TARGET_ARCH` | frequent |
+| `apps` | `pi-agent-apps:latest` | pi + pi-web (npm registry) + npm bin list | `PI_VERSION`, `PI_WEB_VERSION`, `TARGET_ARCH` | frequent |
 | `runtime` | `pi-agent-runtime:latest` | assembly (`COPY --from=`) | — | — |
 | `final` | `pi-agent:latest` + `pi-agent:<version tag>` | service files, config, OCI label | `IMAGE_VERSION` | every build |
 
