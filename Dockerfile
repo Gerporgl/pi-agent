@@ -1,50 +1,28 @@
-# Multi-stage build.
+# Multi-stage build: one stage per component, each declaring ONLY the build args
+# it consumes, and build.sh builds each one separately
+# (`--target <stage> -t pi-agent-<stage>:latest`) so downstream stages can
+# `FROM` / `COPY --from=` those images. Cached layers of a component that was
+# not rebuilt therefore survive `podman image prune`.
 #
-# WHY: container layer caching is linear (a changed instruction busts that
-# layer and every layer after it) AND podman/buildah busts *every* layer of a
-# stage as soon as any build arg DECLARED in that stage changes — even layers
-# above it, even if that stage does not use the arg. With the previous
-# single-stage layout, a pi or pi-web bump rebuilt the whole image, including
-# the ~1.3GB Godot export-template download and the Rust toolchain.
-#
-# HOW: each component lives in its own stage and declares ONLY the build args
-# it consumes. A stage whose declared args are unchanged is fully reused, so
-# bumping one component rebuilds only that component.
-#
-#   base     ubuntu + apt layer + user setup + Node.js runtime  (rarely changes)
-#   rust     Rust toolchain + musl target            (ARG RUST_VERSION)
-#   godot    engine + export templates + docs        (ARG GODOT_VERSION)
-#   apps     pi + pi-web npm installs + npm bin list  (ARG PI_VERSION/PI_WEB_VERSION)
-#   runtime  assembly: godot tree + rust + apps
-#   final    service files, config, OCI version label (ARG IMAGE_VERSION, which
-#            changes on EVERY build, so it is quarantined in this last stage)
-#
-# Assembly rule: in `runtime`, `COPY --from:` the rarely-updated components
-# FIRST (rust) and the frequently updated ones LAST (apps), because
-# the linear rule still applies inside the assembly stage.
-#
-# EVERY STAGE IS A REAL IMAGE
-# build.sh builds one stage at a time with `--target <stage> -t <image>:latest`,
-# and each downstream stage refers to the *built image* (`FROM <image>:latest`,
-# `COPY --from=<image>:latest`) instead of the in-file stage name. Intermediate
-# stages therefore end up with a real tag in the image store, so
-# `podman image prune` (which drops untagged/dangling layers) cannot delete the
-# cached layers of a component that was not rebuilt.
+# Two buildah behaviours drive this layout:
+#  - layer caching is linear, so inside `runtime` the rarely-updated rust is
+#    copied first and the frequently updated apps last;
+#  - a build arg declared in a stage busts every layer of that stage, so
+#    version args are never global and IMAGE_VERSION (new on every build) is
+#    quarantined in `final`.
 
-# Use ubuntu as base, it works best with lxc and systemd tty console and shutdown
-# (build.sh tags the result of this stage as pi-agent-base:latest)
+# ubuntu works best with lxc: systemd tty console and clean shutdown
 FROM ubuntu:26.04 AS base
 
-# Versions passed as build args by build.sh (defaults are the current ones, so a plain `docker build .` still works).
-# NOTE: only declare an ARG in the stage that consumes it — an unused ARG whose
-# value changes still busts that whole stage's cache.
+# build.sh passes the resolved versions; these defaults only make a plain
+# `docker build .` work.
 ARG NODE_MAJOR=24
 
 USER root
 
 RUN rm -f /etc/dpkg/dpkg.cfg.d/excludes
 
-# 2. Forcefully remove Ubuntu's fake man script diversion
+# Remove Ubuntu's fake man script diversion
 RUN if [ -f /usr/bin/man.REAL ] || dpkg-divert --list /usr/bin/man | grep -q "man.REAL"; then \
         rm -f /usr/bin/man && \
         dpkg-divert --remove /usr/bin/man; \
@@ -136,10 +114,8 @@ RUN mkdir -p /home/agent/.ssh && chown agent:agent /home/agent/.ssh && \
     cp /root/.profile /home/agent/.profile && \
     cp /root/.bashrc /home/agent/.bashrc
 
-# Install latest stable Node.js system-wide (NodeSource), available globally to all users.
-# Kept in `base` (not in the npm stages) so the dpkg database stays consistent:
-# a Node major bump is rare, and copying apt-installed binaries between stages
-# would leave nodejs untracked in the final image's dpkg database.
+# Node.js (NodeSource), installed by apt inside `base` so the dpkg database
+# stays consistent; a Node major bump rebuilds everything (rare by design).
 RUN curl -fsSL https://deb.nodesource.com/setup_${NODE_MAJOR}.x | bash - && \
     apt-get install -y nodejs && \
     node --version && npm --version && \
@@ -149,12 +125,10 @@ RUN curl -fsSL https://deb.nodesource.com/setup_${NODE_MAJOR}.x | bash - && \
 
 # --- Component stages (each declares only the args it consumes) ---
 
-# Install Rust toolchain system-wide from the official standalone package,
-# including the musl target for building fully static, libc-independent binaries
-# (the musl target is self-contained: it bundles its own static musl libc,
-# so no distro musl packages are needed)
+# Rust toolchain + musl target (for fully static binaries; the musl target
+# bundles its own static libc, so no distro musl packages are needed)
 FROM pi-agent-base:latest AS rust
-ARG RUST_VERSION=1.98.1
+ARG RUST_VERSION=1.99.0
 ARG TARGET_ARCH=x86_64-unknown-linux-gnu
 RUN curl -sSfLO "https://static.rust-lang.org/dist/rust-${RUST_VERSION}-${TARGET_ARCH}.tar.gz" && \
     curl -sSfLO "https://static.rust-lang.org/dist/rust-std-${RUST_VERSION}-${TARGET_ARCH%-gnu}-musl.tar.gz" && \
@@ -168,13 +142,9 @@ RUN curl -sSfLO "https://static.rust-lang.org/dist/rust-${RUST_VERSION}-${TARGET
     rustc --version && cargo --version && \
     ls "/usr/local/lib/rustlib/${TARGET_ARCH%-gnu}-musl/lib" | grep -q '\.rlib$'
 
-# Install Godot engine system-wide (headless-capable). The binary is nearly
-# static; its runtime dlopens (fontconfig, vulkan) are covered by the apt layer.
-# The real binary goes to /usr/local/lib/godot/godot; /usr/local/bin/godot is a
-# wrapper (bin/godot-wrapper.sh) that auto-adds --headless when no display
-# server is available, so plain `godot --path <project>` usage and CI work on
-# headless machines. There is intentionally NO Godot MCP server in the image:
-# projects are created/edited as plain files and driven through the CLI.
+# Godot engine: real binary at /usr/local/lib/godot/godot, /usr/local/bin/godot
+# is a wrapper that adds --headless when there is no display server.
+# Intentionally no Godot MCP server: projects are plain files driven by the CLI.
 FROM pi-agent-base:latest AS godot
 ARG GODOT_VERSION=4.7.2
 ARG TARGET_ARCH=x86_64-unknown-linux-gnu
@@ -191,13 +161,10 @@ RUN case "${TARGET_ARCH}" in \
 COPY --chmod=755 bin/godot-wrapper.sh /usr/local/bin/godot
 RUN godot --version
 
-# Godot export templates (system-wide, version-pinned to the engine), so
-# Linux/Windows releases can be exported headlessly. Godot looks for them in
-# <user home>/.local/share/godot/export_templates/<engine version>/, so
-# per-user access is provided by symlinks (root here, agent via
-# init-agent.sh on boot). Note: .tpz is a plain zip. Only the Linux x86/arm32
-# and Windows x86 templates are kept; the Android/iOS/macOS/Web templates and
-# the Windows ARM64 / Linux ARM64 ones are pruned to keep the image small.
+# Godot export templates, version-pinned to the engine (Linux x86/arm32 +
+# Windows x86 only, the rest of the .tpz is pruned). Godot expects them under
+# ~/.local/share/godot/export_templates/, hence the symlinks: root's here,
+# agent's is created by init-agent.sh at boot.
 RUN curl -fsSLO "https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}-stable/Godot_v${GODOT_VERSION}-stable_export_templates.tpz" && \
     mkdir -p /usr/local/share/godot/export_templates && \
     unzip -q "Godot_v${GODOT_VERSION}-stable_export_templates.tpz" -d /tmp/godot-templates && \
@@ -214,12 +181,8 @@ RUN curl -fsSLO "https://github.com/godotengine/godot/releases/download/${GODOT_
     test -f "/usr/local/share/godot/export_templates/${GODOT_VERSION}.stable/linux_release.x86_64" && \
     test -f "/usr/local/share/godot/export_templates/${GODOT_VERSION}.stable/windows_release_x86_64.exe"
 
-# Official Godot documentation (reStructuredText), system-wide and pinned to
-# the engine's major.minor: godot-docs keeps one branch per major.minor
-# (e.g. "4.7"), cloned shallow at build time. Only the text files are kept —
-# the .git metadata (~200MB) and the images/videos (~180MB) are useless to an
-# AI agent, leaving ~35MB of reST. The agent learns where it lives from the
-# godot SKILL.md.
+# Official Godot docs (reST) pinned to the engine's major.minor branch; only
+# the .rst/.md text is kept (~35MB instead of ~400MB with .git and images).
 RUN godot_doc_branch="${GODOT_VERSION%.*}" && \
     git clone --depth 1 --branch "${godot_doc_branch}" https://github.com/godotengine/godot-docs.git /tmp/godot-docs && \
     sed -n 's/^version = os.getenv("READTHEDOCS_VERSION", "\([0-9.]*\)").*/\1/p' /tmp/godot-docs/conf.py | grep -qx "${godot_doc_branch}" && \
@@ -229,18 +192,11 @@ RUN godot_doc_branch="${GODOT_VERSION%.*}" && \
     mv /tmp/godot-docs /usr/local/share/godot-docs && \
     test -f /usr/local/share/godot-docs/index.rst
 
-# Install the pi agent and pi-web (global npm, shared by all users).
-# node-pty (a pi-web dependency) needs the build toolchain from `base`.
-#
-# pi-web comes from the npm registry. It used to be installed from a vendored
-# fork tarball while the terminal list polling fix (reload a requested terminal
-# once per navigation intent, not on every poll) lived in a fork; that fix is
-# mainlined upstream as of 1.202610.2, so the registry build is used again.
-# Never hotpatch the installed dist/ in a running container: the plugin package
-# revision is a sha256 over the whole package checked by both gateway and
-# session daemon, so a single edited file makes /api/plugins return 500.
+# pi + pi-web, global npm (node-pty needs the build toolchain from `base`).
+# Never hotpatch the installed pi-web dist/ in a running container: the plugin
+# package revision is a whole-package sha256 checked by gateway and sessiond.
 FROM pi-agent-base:latest AS apps
-ARG PI_VERSION=0.85.1
+ARG PI_VERSION=1.2.0
 ARG PI_WEB_VERSION=1.202610.2
 ARG TARGET_ARCH=x86_64-unknown-linux-gnu
 RUN case "${TARGET_ARCH}" in \
@@ -250,9 +206,8 @@ RUN case "${TARGET_ARCH}" in \
     esac && \
     npm install -g --ignore-scripts @earendil-works/pi-coding-agent@${PI_VERSION} && \
     npm install -g @jmfederico/pi-web@${PI_WEB_VERSION} --allow-scripts=node-pty && \
-    # pi-coding-agent ships an npm-shrinkwrap.json that pins esbuild binaries for
-    # every platform, and npm honors a bundled shrinkwrap verbatim (no platform
-    # filtering), so prune all esbuild platform packages except the native one
+    # pi ships an npm-shrinkwrap.json pinning every esbuild platform binary,
+    # which npm honors verbatim: keep only the native one
     for d in $(find /usr/lib/node_modules -type d -name "@esbuild"); do \
         for p in "$d"/*/; do \
             [ "$(basename "$p")" = "$esb_platform" ] || rm -rf "$p"; \
@@ -262,22 +217,20 @@ RUN case "${TARGET_ARCH}" in \
     # Clean up build caches (npm cache + node-gyp headers downloaded for node-pty)
     npm cache clean --force && \
     rm -rf /root/.cache /root/.npm && \
-    # Record the global npm bin symlinks so the assembly stage can recreate
-    # them: COPY dereferences symlinks, so `pi`, `pi-web`, `npm`... cannot be
-    # carried over as links by COPY --from.
+    # Record the global npm bin symlinks: COPY dereferences symlinks, so the
+    # assembly stage has to recreate them instead of copying them.
     mkdir -p /etc/pi-agent && \
     find /usr/bin -maxdepth 1 -type l -printf '%p\t%l\n' | grep node_modules > /etc/pi-agent/npm-bins.tsv && \
     cat /etc/pi-agent/npm-bins.tsv
 
-# --- Assembly ---
-# Start from the Godot stage (its layers are the biggest and change the least)
-# and copy in the others, rarely-updated first.
+# Assembly: start from the godot stage (biggest, least frequently rebuilt) and
+# copy the others in, rarely-updated first.
 FROM pi-agent-godot:latest AS runtime
 COPY --from=pi-agent-rust:latest /usr/local /usr/local
 COPY --from=pi-agent-apps:latest /usr/lib/node_modules /usr/lib/node_modules
 COPY --from=pi-agent-apps:latest /etc/pi-agent/npm-bins.tsv /etc/pi-agent/npm-bins.tsv
-# Recreate the npm global bin links and the export-templates symlink (COPY
-# dereferences symlinks, so they have to be re-created, not copied).
+# Re-create the npm bin links and the export-templates symlink (COPY would
+# dereference them).
 RUN while IFS="$(printf '\t')" read -r link target; do ln -sfn "$target" "$link"; done < /etc/pi-agent/npm-bins.tsv && \
     mkdir -p /root/.local/share/godot && \
     ln -sfn /usr/local/share/godot/export_templates /root/.local/share/godot/export_templates && \
@@ -286,32 +239,23 @@ RUN while IFS="$(printf '\t')" read -r link target; do ln -sfn "$target" "$link"
     command -v pi && command -v pi-web && \
     ls -l /usr/bin/pi /usr/bin/pi-web
 
-# --- Final stage: config + OCI metadata ---
-# IMAGE_VERSION changes on every build, so it is quarantined here: this stage
-# only holds cheap COPY/RUN steps and never invalidates the layers above.
+# Final stage: config + OCI metadata, the only part that changes every build.
 FROM pi-agent-runtime:latest AS final
 
-# Full component version tag (e.g. node-24-pi-0.86.1-pi-web-1.202609.0-rust-1.98.1-godot-4.7.2),
-# stored as the image version so `podman inspect`/quadlet scripts can read it at runtime.
-# It overrides the `org.opencontainers.image.version:26.04` inherited from the base image.
-ARG IMAGE_VERSION=node-24-pi-0.86.1-pi-web-1.202609.0-rust-1.98.1-godot-4.7.2
-
-# Clear the OCI metadata inherited from the base image (the long Canonical
-# description otherwise shows up in the ghcr.io page header) and set our own
-# version label
+# Full component version tag, readable at runtime with `podman image inspect`.
+# Overrides the version inherited from the base image; empty description/title
+# clears Canonical's metadata from the ghcr.io page header.
+ARG IMAGE_VERSION=node-24-pi-1.2.0-pi-web-1.202610.2-rust-1.99.0-godot-4.7.2
 LABEL org.opencontainers.image.version="${IMAGE_VERSION}" \
       org.opencontainers.image.description="" \
       org.opencontainers.image.title=""
 
-# systemd service files, pi-web config, and the per-home pi config stub that
-# init-agent ingests into /home/agent on every boot (kept as real files in the repo)
 COPY systemd/pi-web-sessiond.service systemd/pi-web.service systemd/pi-home-init.service /etc/systemd/system/
-COPY systemd/pi-web-restart.service systemd/pi-web-restart.timer /etc/systemd/system/
 COPY etc/pi-web/config.js /etc/pi-web/config.js
 COPY --chmod=755 bin/init-agent.sh /usr/local/bin/init-agent
 COPY etc/pi-agent/home/ /etc/pi-agent/home/
 
-# Listen on different ssh port, so that it can coexists with another ssh server on the same pasta network
+# Different ssh port, so it can coexist with a host ssh server on the same pasta network
 RUN mkdir -p /etc/systemd/system/ssh.socket.d && \
     echo "[Socket]" > /etc/systemd/system/ssh.socket.d/listen.conf && \
     echo "ListenStream=" >> /etc/systemd/system/ssh.socket.d/listen.conf && \
@@ -325,12 +269,10 @@ RUN mkdir -p /var/lib/systemd/linger && \
     mkdir -p /opt/agent-home-skeleton && \
     cp -a /home/agent/. /opt/agent-home-skeleton/
 
-RUN systemctl enable pi-home-init.service pi-web-sessiond.service pi-web.service pi-web-restart.timer
+RUN systemctl enable pi-home-init.service pi-web-sessiond.service pi-web.service
 
 
 STOPSIGNAL SIGRTMIN+3
 
-# Use full systemd init, more convenient
-# for managing logs with timestamps, auto restarts with exponential backoff, etc.
-# Runs well on lxc and proxmox with full tty console support, can be nested
+# Full systemd as entrypoint: logged timestamps, restart backoff, tty console on lxc
 ENTRYPOINT ["/sbin/init"]

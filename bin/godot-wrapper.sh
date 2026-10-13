@@ -1,10 +1,7 @@
 #!/bin/bash
-# Godot wrapper: auto-adds --headless when no display server is available, so
-# headless usage (running/validation/CI, import/export) works on machines
-# without X11/Wayland or a GPU. With a display present, the engine runs
-# normally (editor, live preview).
-#
-# The real engine binary lives at /usr/local/lib/godot/godot.
+# Godot wrapper: adds --headless when there is no display server, so CLI usage
+# works headlessly while the editor still runs normally with a display present.
+# Real binary: /usr/local/lib/godot/godot
 if [ -z "${DISPLAY:-}" ] && [ -z "${WAYLAND_DISPLAY:-}" ]; then
     exec /usr/local/lib/godot/godot --headless "$@"
 fi

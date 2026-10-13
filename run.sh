@@ -1,13 +1,9 @@
 #!/bin/bash
 
 
-# Run a base systemd-container
-
-# This is mostly an example on how to run the container locally
-# setting the root password at run time here is for convenience 
-# for testing, without baking in the root password in the image itself
-# By default, if not set, the root password is not set, and there is no way to access anything
-# This is the default secure behavior
+# Example local run of the systemd container: sets the root password at runtime
+# (never baked into the image; with no password there is no way in) and copies
+# your ssh key for root.
 CONTAINER_NAME=pi-agent
 if [ ! $IMAGE_NAME ]; then
     IMAGE_NAME=ghcr.io/gerporgl/pi-agent:latest

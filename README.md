@@ -4,118 +4,71 @@ A minimal Ubuntu 26.04 container that runs the [pi coding agent](https://www.npm
 
 ## Design
 
-- **Base**: Ubuntu 26.04 with a minimal set of CLI tools the agent can use (python, uv, node.js, gcc, git, ripgrep, fd-find, build-essential, jq, yq, etc.).
-- **Rust+Cargo**: Always the latest rust stable release, bundled with musl so the agent can build static binaries without any libc dependency
-- **Godot**: the [Godot engine](https://godotengine.org) (headless-capable) is installed system-wide; the real binary lives at `/usr/local/lib/godot/godot` and `/usr/local/bin/godot` is a thin wrapper that auto-adds `--headless` when no display server is available, so plain `godot --path <project>` usage and CI work headlessly. It ships together with the official [Godot documentation](https://github.com/godotengine/godot-docs) (reStructuredText, version-matched to the engine) at `/usr/local/share/godot-docs`. Projects are created/edited as plain text files and driven through the CLI with bash: **no Godot MCP server is installed** (a `godot-mcp` server used to ship; it was removed after too many issues — CLI + headless mode proved more reliable).
-- **Init**: full `systemd` as entrypoint (`/sbin/init`), with `pi-web` and `pi-web-sessiond` managed as systemd services. Works well on Proxmox LXC (full TTY console, clean shutdown) and in nested podman containers.
-- **Users**: pi-agent and pi-web run as the unprivileged `agent` user. `openssh-server` is installed for administrative SSH access (as `root`, running on **port 2223**, you'll need to mount your authorized_keys, or set a root password, see run.sh code).
-- **Persistence**: agent/web state lives under `/home/agent`, which is intended to be bind-mounted (see `home-data/` for a reference layout). Put your own `~/.pi/agent/models.json` (and other pi configs) in that mounted volume.
-  - Benefit: Base image can safely be updated regularly without losing anything the agent created inside its home folder, which is the only place it can write.
+- **Base**: Ubuntu 26.04 with the CLI tools the agent uses (python + uv, Node.js, gcc, git, ripgrep, fd, build-essential, jq, yq, podman…).
+- **Rust + Cargo**: latest stable, with the musl target so the agent can build fully static binaries.
+- **Godot**: engine installed system-wide (real binary at `/usr/local/lib/godot/godot`, `/usr/local/bin/godot` adds `--headless` when there is no display), plus official export templates and the official docs at `/usr/local/share/godot-docs`. Godot work is plain files + `godot --headless`; **no Godot MCP server is installed**.
+- **Init**: full `systemd` as entrypoint (`/sbin/init`); `pi-web` and `pi-web-sessiond` run as services. Works on Proxmox LXC (tty console, clean shutdown) and nested podman containers.
+- **Users**: everything runs as the unprivileged `agent` user. `openssh-server` gives root admin SSH on **port 2223** (mount an authorized_keys or set a root password, see `run.sh`).
+- **Persistence**: all state lives under `/home/agent`, meant to be bind-mounted — so the base image can be replaced at any time without losing anything the agent wrote. Put your own `~/.pi/agent/models.json` and other pi configs in that volume.
 
 ## Building
 
 ```bash
-./build.sh            # builds every stage + pi-agent:latest (podman if available, else docker)
+./build.sh            # podman if available, else docker; CT_TOOL env var overrides
 ./build_and_run.sh    # build + local run
 ```
 
-`build.sh` builds **one stage at a time** (`--target <stage> -t pi-agent-<stage>:latest`),
-so each stage is a real tagged image in the local store — see "Build stages and
-cache reuse" below.
-The image tag encodes all component versions (e.g. `node-24-pi-0.86.1-pi-web-1.202609.0-rust-1.98.1-godot-4.7.2`) and is also embedded in the image itself as the `org.opencontainers.image.version` OCI label, so it can be read at runtime without knowing the tag:
+`build.sh` resolves the latest stable Node major, pi, pi-web, Rust and Godot versions, then builds **one stage at a time** so each component is cached separately:
+
+| Stage | Image tag | Build args | Changes |
+|---|---|---|---|
+| `base` | `pi-agent-base:latest` | `NODE_MAJOR` | rare |
+| `rust` | `pi-agent-rust:latest` | `RUST_VERSION`, `TARGET_ARCH` | rare |
+| `godot` | `pi-agent-godot:latest` | `GODOT_VERSION`, `TARGET_ARCH` | rare |
+| `apps` | `pi-agent-apps:latest` | `PI_VERSION`, `PI_WEB_VERSION`, `TARGET_ARCH` | frequent |
+| `runtime` | `pi-agent-runtime:latest` | — | assembly |
+| `final` | `pi-agent:latest` + version tag | `IMAGE_VERSION` | every build |
+
+The version tag (`node-<major>-pi-<ver>-pi-web-<ver>-rust-<ver>-godot-<ver>`) is also stored as the `org.opencontainers.image.version` OCI label:
 
 ```bash
 podman image inspect --format '{{index .Labels "org.opencontainers.image.version"}}' pi-agent:latest
 ```
 
-### Build stages and cache reuse
-
-The Dockerfile is a **multi-stage build**: each component is its own stage and
-declares *only* the build args it consumes, so bumping one component rebuilds
-only that stage and reuses the rest from the local layer cache.
-
-| Stage (`--target`) | Tagged image | Contents | Args it declares | Changes |
-|---|---|---|---|---|
-| `base` | `pi-agent-base:latest` | apt layer, user setup, Node.js runtime | `NODE_MAJOR` | rare |
-| `rust` | `pi-agent-rust:latest` | Rust toolchain + musl target | `RUST_VERSION`, `TARGET_ARCH` | rare |
-| `godot` | `pi-agent-godot:latest` | engine + export templates + docs | `GODOT_VERSION`, `TARGET_ARCH` | rare |
-| `apps` | `pi-agent-apps:latest` | pi + pi-web (npm registry) + npm bin list | `PI_VERSION`, `PI_WEB_VERSION`, `TARGET_ARCH` | frequent |
-| `runtime` | `pi-agent-runtime:latest` | assembly (`COPY --from=`) | — | — |
-| `final` | `pi-agent:latest` + `pi-agent:<version tag>` | service files, config, OCI label | `IMAGE_VERSION` | every build |
-
-Each stage is built and tagged separately, and downstream stages refer to the
-**built images** (`FROM pi-agent-base:latest`, `COPY --from=pi-agent-rust:latest`,
-…) instead of the in-file stage names.
-Because every intermediate stage carries a real tag, `podman image
-prune` / `docker image prune` cannot throw away the layers of a component that
-was not rebuilt: pruning untagged leftovers keeps the cache intact, and the
-next build reuses those tagged images. `pi-agent-runtime:latest` is the
-assembled toolchain before the service/config layers, `pi-agent:latest` (plus
-the version tag) is the final image.
-
-Two container-build rules drive this layout:
-
-1. Layer caching is **linear**: a changed instruction busts that layer and
-everything after it. That is why the assembly stage starts from `godot` and
-copies the rarely-updated component first (`rust`) and the frequent one last
-(`apps`), and why the ever-changing `IMAGE_VERSION` label is quarantined in the
-last stage.
-2. **podman/buildah busts every layer of a stage** when any build arg
-*declared in that stage* changes — even layers above it, even if unused there.
-So version args must never be declared globally at the top of the file.
-
-Measured on a local podman 5.7 build (full cold build ≈ 6 min / 3.95 GB image):
-a pi version bump re-runs only `apps` + assembly + final — the apt,
-Node, Rust (450 MB download) and Godot (1.36 GB download) layers all come from
-cache, ≈ 24 s.
+Cold build ≈ 6 min / 3.95 GB; a pi or pi-web bump then reuses the apt, Node, Rust and Godot layers (≈ 24 s).
 
 ## Running
 
 ```bash
-./run.sh              # example run: creates the container, sets a root password,
-                      # copies your SSH key for root, and attaches
-./run_local.sh        # same, but using the locally built image
+./run.sh              # example: creates the container, sets a root password,
+                      # copies your ssh key for root, then attaches
+./run_local.sh        # same, against the locally built image
 ```
-
-Key run options (podman):
 
 | Option | Purpose |
 |---|---|
 | `-v ./home-data:/home/agent` | persistent agent + pi-web state |
 | `--userns=keep-id` | keep host UID so mounted files are owned correctly |
-| `-p 2223:2223` | SSH access |
+| `-p 2223:2223` | SSH (root admin) |
 | `-p 8504:8504` | pi-web web UI |
 
-`run.sh` is just an example script; it works equally well with **podman quadlets** or as a Proxmox LXC container. If not run as root, there is no way in — that is the intended default.
+`run.sh` is only an example — quadlets and Proxmox LXC work equally well. Without a root password there is no way in: that is the intended default.
 
-## Migrating an existing home folder (ubuntu → agent)
+## Migrating an old home folder (ubuntu → agent)
 
-If your persistent home folder was created with an older image (when the user was `ubuntu`), migrate its pi / pi-web state to the `agent` layout:
+If your home volume predates the `agent` user:
 
 ```bash
-./migrate.sh ./pi-agent-home              # add --dry-run to preview without changes
+./migrate.sh ./pi-agent-home      # --dry-run to preview
 ```
 
-It renames pi session directories under `.pi/agent/sessions/` (`--home-ubuntu-*` → `--home-agent-*`), rewrites `/home/ubuntu` → `/home/agent` in the pi / pi-web state files (`trust.json`, `projects.json`, `archived-sessions.json`, `session-unread.json`, `sessiond-owner.json`), and updates the session header (first line) of each `*.jsonl` so its `cwd` matches the new project path — pi matches sessions to projects by that header field. The conversation lines inside `*.jsonl` files are left untouched. The script is idempotent (safe to re-run, e.g. to finish a partially completed migration) and refuses to run against the agent's own live home.
+It renames the pi session directories, rewrites `/home/ubuntu` → `/home/agent` in the pi/pi-web state files, and fixes each session's `cwd` header. Idempotent, and it refuses to run against the agent's own live home.
 
-## Godot (headless CLI)
+## Godot
 
-The image ships the Godot engine (headless), the official Godot export templates (Linux x86/arm32 + Windows x86) and the official Godot documentation (reStructuredText, version-matched to the engine) at `/usr/local/share/godot-docs`, as system-wide layers. Godot work is done with plain files + bash + `godot --headless`; **no Godot MCP server is installed** (the `godot-mcp` package and its default `~/.pi/agent/mcp.json` were removed — too many issues, the CLI/headless path is more reliable). If you want MCP servers, create your own `~/.pi/agent/mcp.json`; nothing is ingested there anymore.
-
-On every boot, `pi-home-init.service` ingests the small per-home config into `/home/agent`. The godot skill files are system-managed and always synced from the image (so image upgrades reach pre-existing homes; customise in your own skill folder instead of editing them); everything else is only ingested if missing, so user edits are never clobbered:
-
-- `~/.pi/agent/skills/godot/SKILL.md` — a skill describing the headless CLI workflow and the local documentation (always synced from the image)
-- `~/.pi/agent/skills/godot/export_presets.cfg.example` — a ready-to-use preset file for headless Linux/Windows exports (always synced from the image)
-- `~/.local/share/godot/export_templates` — symlink to the system-wide export templates (only if you haven't provided your own)
-
-The godot `SKILL.md` (synced into the agent home) tells the agent where the local documentation lives and how to navigate it: `index.rst` is the master index, `tutorials/` holds the topic guides (including the command-line reference), and `classes/` is the full API reference (one `.rst` per class). The agent typically greps it with `rg` and reads the matching pages.
-
-The skill makes the **local documentation the source of truth**: the agent must check `godot --version`, look up classes and CLI flags in `/usr/local/share/godot-docs` before writing Godot-specific code, and must go back to the docs immediately when something does not work instead of retrying from memory — training knowledge of another Godot version (4.4, 4.3, …) is not the installed engine and its API differs.
-
-Because the official export templates are installed, Linux and Windows Desktop releases can be exported headlessly from the CLI: copy `~/.pi/agent/skills/godot/export_presets.cfg.example` into the project as `export_presets.cfg` (edit the `export_path` values), then `godot --headless --path <project> --export-release "Linux" build/linux` / `--export-release "Windows Desktop" build/windows.exe`.
+The image ships the engine, the official export templates (Linux x86/arm32 + Windows x86) and the official docs as system-wide layers — nothing is downloaded at runtime. On every boot `pi-home-init.service` ingests a small per-home config into `/home/agent`: the godot skill (`SKILL.md`, `export_presets.cfg.example`, always synced from the image, so customise in your own skill folder) and a symlink to the export templates. The skill points the agent at the local docs (`index.rst`, `tutorials/`, `classes/`) and makes it check the installed engine version instead of relying on training knowledge. To export: copy `export_presets.cfg.example` to `export_presets.cfg` in the project, then `godot --headless --path <project> --export-release "Linux" build/linux`.
 
 ## Notes
 
-- **Daily pi-web restart**: `pi-web-restart.timer` fires at **06:00 container local time** and runs `pi-web-restart.service`, which restarts `pi-web-sessiond.service` then `pi-web.service`. This is a temporary workaround for upstream pi-web issues (terminal URL spamming and MCP server instantiation) until they are fixed upstream. The time is whatever the container's local time is — `/etc/localtime` is normally bind-mounted by the host, so it follows the host timezone; without it the container is UTC and the restart happens at 06:00 UTC. Nothing timezone-related is baked into the image. `Persistent=true` means a container that was not running at 06:00 does the restart once at boot instead of waiting a full day. Turn it off with `systemctl disable --now pi-web-restart.timer` inside the container (or remove the two `systemd/pi-web-restart.*` files and the `COPY`/`enable` lines in the Dockerfile once the upstream fixes land).
-- No automatic apt updates: systemd update timers are removed. Update by rebuilding the image.
-- If `/home/agent` is mounted empty, a one-shot systemd service seeds it with a home skeleton (dotfiles, pi configs). The per-boot ingestion described above runs regardless, so upgraded containers with an existing home volume pick up new system-provided config without any downloads.
+- No automatic apt updates (timers removed) — update by rebuilding the image.
+- If `/home/agent` is mounted empty it gets seeded from a home skeleton; the per-boot config ingest runs either way.

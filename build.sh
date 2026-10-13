@@ -3,9 +3,9 @@
 set -e
 
 # Options:
-#   --build-ghcr  skip the build if the resolved tag already exists on ghcr.io
-#                 (removes the version .txt files so callers can detect the skip)
-#   --force       with --build-ghcr, build even if the tag already exists
+#   --build-ghcr  skip the build if the tag already exists on ghcr.io
+#                 (deletes the version .txt files so callers detect the skip)
+#   --force       with --build-ghcr, build anyway
 BUILD_GHCR=0
 FORCE=0
 for arg in "$@"; do
@@ -28,7 +28,7 @@ echo "Using container tool: $command"
 
 # --- Dynamically fetch the latest versions ---
 
-# Major version of the current latest stable LTS Node.js release (e.g. 24)
+# Major version of the latest stable LTS Node.js release (e.g. 24)
 node_major=$(curl -fsS https://nodejs.org/dist/index.json \
 	| jq -r '[.[] | select(.lts != false)][0].version' \
 	| sed 's/^v//' | cut -d. -f1)
@@ -44,8 +44,7 @@ rust_version=$(curl -fsS https://static.rust-lang.org/dist/channel-rust-stable.t
 	| awk '/^\[pkg\.rust\]/{f=1; next} f && /^version =/{print; exit}' \
 	| cut -d'"' -f2 | cut -d' ' -f1)
 
-# Latest stable Godot engine release (GitHub marks the newest stable as "latest",
-# e.g. tag 4.7.2-stable -> 4.7.2)
+# Latest stable Godot release (GitHub tags the newest stable as "latest")
 godot_version=$(curl -fsS https://api.github.com/repos/godotengine/godot/releases/latest \
 	| jq -r .tag_name | sed 's/-stable$//')
 
@@ -71,10 +70,10 @@ echo "target_arch=$target_arch"
 tag="node-${node_major}-pi-${pi_version}-pi-web-${pi_web_version}-rust-${rust_version}-godot-${godot_version}"
 echo "tag=pi-agent:$tag"
 
-# For --build-ghcr: never re-push a same-tag image with different content,
-# so skip the build entirely if this exact tag is already published on ghcr.io
+# Never re-push a same-tag image with different content: skip the build when
+# this exact tag is already published on ghcr.io
 if [ "$BUILD_GHCR" == "1" ] && [ "$FORCE" != "1" ]; then
-	# Resolve the ghcr.io package owner from the git origin remote (git@github.com:Owner/repo.git)
+	# ghcr.io package owner, from the git origin remote
 	owner=$(git remote get-url origin 2>/dev/null \
 		| sed -E 's|^git@github\.com:|https://github.com/|' \
 		| sed -E 's|https?://github\.com/([^/]+)/.*$|\1|')
@@ -102,12 +101,8 @@ echo "$godot_version" > godot_version.txt
 echo "$tag" > pi_agent_tag.txt
 
 # --- Build one stage at a time, each tagged :latest ---
-# Every stage is built with --target and
-# tagged <name>:latest, and the Dockerfile refers to those *images* (FROM
-# pi-agent-<stage>:latest / COPY --from=pi-agent-<stage>:latest). Intermediate
-# stages then exist as real tagged images, so `podman image prune` (or
-# `docker image prune`) can drop the untagged leftovers without destroying the
-# cached layers of the components that were not rebuilt.
+# The Dockerfile refers to those images (FROM / COPY --from= pi-agent-<stage>:latest),
+# so prune cannot throw away the cached layers of a component that was not rebuilt.
 build_stage() {
 	local stage=$1 image=$2
 	shift 2
@@ -135,7 +130,7 @@ build_stage apps pi-agent-apps \
 	--build-arg PI_WEB_VERSION="$pi_web_version" \
 	--build-arg TARGET_ARCH="$target_arch"
 
-# Assembly: copies from the already tagged pi-agent-rust/pi-agent-apps images
+# Assembly: copies from the already tagged rust/apps images
 build_stage runtime pi-agent-runtime
 
 build_stage final pi-agent \

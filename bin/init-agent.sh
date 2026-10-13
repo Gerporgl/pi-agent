@@ -8,19 +8,13 @@ else
 fi
 
 # Ingest the system-provided pi config into the agent home (idempotent, every
-# boot). The heavy pieces live in system-wide image layers (godot binary, godot
-# docs, export templates); only these small files are ingested per home, so
-# upgraded containers with a pre-existing home volume need no downloads at
-# runtime.
-# Note: no default mcp.json is shipped anymore (the Godot MCP server was
-# removed; Godot projects are driven with bash + `godot --headless`). If you
-# add your own MCP servers, create ~/.pi/agent/mcp.json yourself.
+# boot), so pre-existing home volumes pick up config on image upgrades. The
+# heavy pieces (godot binary, docs, export templates) are image layers, and no
+# mcp.json is shipped: create ~/.pi/agent/mcp.json yourself if you want MCP.
 STUB=/etc/pi-agent/home
 
-# Godot skill (system-managed). Synced from the image on every boot so that
-# image upgrades reach pre-existing home volumes. Files are only rewritten
-# when their content differs, so unchanged homes are left untouched. To
-# customise, create your own skill folder instead of editing these files.
+# Godot skill files are system-managed: synced on every boot (rewritten only
+# when content differs). Customise in your own skill folder instead.
 mkdir -p /home/agent/.pi/agent/skills/godot
 for f in SKILL.md export_presets.cfg.example; do
     if ! cmp -s "$STUB/.pi/agent/skills/godot/$f" "/home/agent/.pi/agent/skills/godot/$f"; then
@@ -29,9 +23,8 @@ for f in SKILL.md export_presets.cfg.example; do
     fi
 done
 
-# Godot export templates: make the system-wide templates available to the
-# agent user (Godot looks in ~/.local/share/godot/export_templates/<ver>/).
-# Symlink only if the user has not provided their own templates.
+# Make the system-wide export templates visible to the agent user, unless it
+# already has its own.
 if [ ! -e /home/agent/.local/share/godot/export_templates ]; then
     mkdir -p /home/agent/.local/share/godot
     ln -s /usr/local/share/godot/export_templates /home/agent/.local/share/godot/export_templates
