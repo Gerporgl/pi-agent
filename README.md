@@ -72,3 +72,4 @@ The image ships the engine, the official export templates (Linux x86/arm32 + Win
 
 - No automatic apt updates (timers removed) — update by rebuilding the image.
 - If `/home/agent` is mounted empty it gets seeded from a home skeleton; the per-boot config ingest runs either way.
+- pi-web config is baked read-only at `/etc/pi-web/config.js` (edit `etc/pi-web/config.js` and rebuild). By default agents cannot spawn extra sessions or subsessions, since they cost context — see the [pi-web config reference](https://pi-web.dev/config) for the keys.

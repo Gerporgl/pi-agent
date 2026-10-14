@@ -11,6 +11,9 @@ ExecStart=/usr/bin/pi-web-sessiond
 Environment=HOME=/home/agent
 Environment=NODE_ENV=production
 Environment=PI_WEB_DATA_DIR=/home/agent/.pi-web
+# Same read-only config file as the gateway: session-daemon keys
+# (spawnSessions / subsessions / environmentFacts) only apply here.
+Environment=PI_WEB_CONFIG=/etc/pi-web/config.js
 Restart=always
 RestartSec=3
 
