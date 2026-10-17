@@ -1,0 +1,13 @@
+[Unit]
+Description=256MB Limit on Podman Pre-Mounted
+DefaultDependencies=no
+Conflicts=shutdown.target
+Before=local-fs.target shutdown.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/bin/mount -o remount,size=256M tmpfs /tmp
+
+[Install]
+WantedBy=local-fs.target

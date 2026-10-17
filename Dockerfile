@@ -32,7 +32,7 @@ RUN if [ -f /usr/bin/man.REAL ] || dpkg-divert --list /usr/bin/man | grep -q "ma
 RUN cat /etc/apt/sources.list.d/ubuntu.sources && \
     apt-get update && \
     apt-get purge -y unminimize && \
-    apt-get install -y --no-install-recommends \ 
+    apt-get install -y --no-install-recommends \
     ca-certificates \
     software-properties-common && \
     apt-get install -y --reinstall -y \
@@ -87,7 +87,7 @@ RUN cat /etc/apt/sources.list.d/ubuntu.sources && \
     rm /etc/update-motd.d/10* && rm /etc/update-motd.d/50* && rm /etc/update-motd.d/60* && \
     # Enable some service and remove a bunch of unwanted automatic timers
     # Updates will have to be run manually or with new containers builds
-    systemctl enable systemd-networkd.service && \ 
+    systemctl enable systemd-networkd.service && \
     rm /etc/systemd/system/timers.target.wants/apt* && \
     rm /etc/systemd/system/timers.target.wants/dpkg* && \
     rm /etc/systemd/system/timers.target.wants/e2scrub* && \
@@ -269,7 +269,8 @@ RUN mkdir -p /var/lib/systemd/linger && \
     mkdir -p /opt/agent-home-skeleton && \
     cp -a /home/agent/. /opt/agent-home-skeleton/
 
-RUN systemctl enable pi-home-init.service pi-web-sessiond.service pi-web.service
+COPY systemd/resize-tmp.service /etc/systemd/system/resize-tmp.service
+RUN systemctl enable pi-home-init.service pi-web-sessiond.service pi-web.service resize-tmp.service
 
 
 STOPSIGNAL SIGRTMIN+3
