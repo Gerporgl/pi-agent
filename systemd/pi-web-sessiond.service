@@ -14,6 +14,9 @@ Environment=PI_WEB_DATA_DIR=/home/agent/.pi-web
 # Same read-only config file as the gateway: session-daemon keys
 # (spawnSessions / subsessions / environmentFacts) only apply here.
 Environment=PI_WEB_CONFIG=/etc/pi-web/config.js
+# Same reason as in pi-web.service: sessions are spawned by this daemon.
+Environment=PLAYWRIGHT_BROWSERS_PATH=/usr/local/share/ms-playwright
+Environment=NODE_PATH=/usr/lib/node_modules
 Restart=always
 RestartSec=3
 

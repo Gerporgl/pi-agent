@@ -17,6 +17,10 @@ Environment=HOME=/home/agent
 Environment=NODE_ENV=production
 Environment=PI_WEB_DATA_DIR=/home/agent/.pi-web
 Environment=PI_WEB_CONFIG=/etc/pi-web/config.js
+# systemd services do not inherit the container image ENV, so the Playwright
+# locations have to be set here as well.
+Environment=PLAYWRIGHT_BROWSERS_PATH=/usr/local/share/ms-playwright
+Environment=NODE_PATH=/usr/lib/node_modules
 
 Restart=always
 RestartSec=5

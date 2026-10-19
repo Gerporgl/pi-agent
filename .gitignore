@@ -5,4 +5,5 @@ pi_version.txt
 pi_web_version.txt
 rust_version.txt
 godot_version.txt
+playwright_version.txt
 pi_agent_tag.txt

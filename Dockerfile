@@ -192,6 +192,48 @@ RUN godot_doc_branch="${GODOT_VERSION%.*}" && \
     mv /tmp/godot-docs /usr/local/share/godot-docs && \
     test -f /usr/local/share/godot-docs/index.rst
 
+# Playwright: the library + official test runner (global npm) and the browser
+# binaries as image layers, so nothing is downloaded at runtime. Built on top of
+# `godot` on purpose: the browser system libraries come in through
+# `playwright install --with-deps` and apt packages cannot be COPYed between
+# stages, so the stage that installs them must be in the assembly's base chain.
+#
+# Headless-only by design (no display is ever available here): Chromium *headless
+# shell* + Firefox, no full Chromium build and no WebKit.
+FROM pi-agent-godot:latest AS playwright
+ARG PLAYWRIGHT_VERSION=1.64.1
+# Browsers live in one shared, world-readable system directory instead of a
+# per-user cache, and the variable is baked into the image config, so every
+# process sees it (systemd, pi-web sessions, ssh shells). Do not set it to a
+# writable path: `playwright install` at runtime would then re-download.
+ENV PLAYWRIGHT_BROWSERS_PATH=/usr/local/share/ms-playwright
+# CJS `require("playwright")` then works from any working directory. (ESM
+# `import` ignores NODE_PATH — `playwright-link` covers that, see below.)
+ENV NODE_PATH=/usr/lib/node_modules
+RUN apt-get update && \
+    # One npm transaction for both packages: installed one after the other they
+    # fight over the shared `playwright` bin link (EEXIST). @playwright/test
+    # ships the superset CLI (it also knows `test`, `screenshot`, `pdf`, ...),
+    # so point /usr/bin/playwright at it and keep the plain library importable
+    # as `require("playwright")`.
+    npm install -g playwright@${PLAYWRIGHT_VERSION} @playwright/test@${PLAYWRIGHT_VERSION} && \
+    ln -sfn ../lib/node_modules/@playwright/test/cli.js /usr/bin/playwright && \
+    playwright install --with-deps chromium-headless-shell firefox && \
+    playwright --version && \
+    playwright test --help >/dev/null && \
+    ls -1 /usr/local/share/ms-playwright && \
+    npm cache clean --force && \
+    apt-get -y clean && \
+    rm -rf /var/lib/apt/lists/* /root/.cache /root/.npm /var/tmp/* /tmp/*
+# Kept after the expensive browser layer: editing the helper must not cost a
+# browser re-download. It makes a project resolve the global install instead of
+# npm-installing its own (which would drift from these browsers).
+COPY --chmod=755 bin/playwright-link.sh /usr/local/bin/playwright-link
+# PAM login shells (`ssh`, `su -`, `sudo`) start from a clean environment, so
+# the image env alone is not enough: repeat both variables for PAM sessions.
+RUN printf '%s\n' 'PLAYWRIGHT_BROWSERS_PATH=/usr/local/share/ms-playwright' \
+                  'NODE_PATH=/usr/lib/node_modules' >> /etc/environment
+
 # pi + pi-web, global npm (node-pty needs the build toolchain from `base`).
 # Never hotpatch the installed pi-web dist/ in a running container: the plugin
 # package revision is a whole-package sha256 checked by gateway and sessiond.
@@ -223,9 +265,9 @@ RUN case "${TARGET_ARCH}" in \
     find /usr/bin -maxdepth 1 -type l -printf '%p\t%l\n' | grep node_modules > /etc/pi-agent/npm-bins.tsv && \
     cat /etc/pi-agent/npm-bins.tsv
 
-# Assembly: start from the godot stage (biggest, least frequently rebuilt) and
-# copy the others in, rarely-updated first.
-FROM pi-agent-godot:latest AS runtime
+# Assembly: start from the godot+playwright chain (biggest, least frequently
+# rebuilt) and copy the others in, rarely-updated first.
+FROM pi-agent-playwright:latest AS runtime
 COPY --from=pi-agent-rust:latest /usr/local /usr/local
 COPY --from=pi-agent-apps:latest /usr/lib/node_modules /usr/lib/node_modules
 COPY --from=pi-agent-apps:latest /etc/pi-agent/npm-bins.tsv /etc/pi-agent/npm-bins.tsv
@@ -238,6 +280,12 @@ RUN while IFS="$(printf '\t')" read -r link target; do ln -sfn "$target" "$link"
     godot --version && rustc --version && cargo --version && node --version && npm --version && \
     command -v pi && command -v pi-web && \
     ls -l /usr/bin/pi /usr/bin/pi-web
+COPY bin/playwright-smoke.js /tmp/playwright-smoke.js
+RUN command -v playwright && playwright --version && \
+    # As the unprivileged agent user: proves the shared browsers are readable
+    # and launchable without a display, exactly like at runtime.
+    su -s /bin/bash agent -c 'cd /tmp && node /tmp/playwright-smoke.js' && \
+    rm -f /tmp/playwright-smoke.js
 
 # Final stage: config + OCI metadata, the only part that changes every build.
 FROM pi-agent-runtime:latest AS final
@@ -245,7 +293,7 @@ FROM pi-agent-runtime:latest AS final
 # Full component version tag, readable at runtime with `podman image inspect`.
 # Overrides the version inherited from the base image; empty description/title
 # clears Canonical's metadata from the ghcr.io page header.
-ARG IMAGE_VERSION=node-24-pi-1.2.0-pi-web-1.202610.2-rust-1.99.0-godot-4.7.2
+ARG IMAGE_VERSION=node-24-pi-1.2.0-pi-web-1.202610.2-rust-1.99.0-godot-4.7.2-pw-1.64.1
 LABEL org.opencontainers.image.version="${IMAGE_VERSION}" \
       org.opencontainers.image.description="" \
       org.opencontainers.image.title=""

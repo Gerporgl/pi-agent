@@ -9,18 +9,24 @@ fi
 
 # Ingest the system-provided pi config into the agent home (idempotent, every
 # boot), so pre-existing home volumes pick up config on image upgrades. The
-# heavy pieces (godot binary, docs, export templates) are image layers, and no
-# mcp.json is shipped: create ~/.pi/agent/mcp.json yourself if you want MCP.
+# heavy pieces (godot binary, docs, export templates, Playwright browsers) are
+# image layers, and no mcp.json is shipped: create ~/.pi/agent/mcp.json yourself
+# if you want MCP.
 STUB=/etc/pi-agent/home
 
-# Godot skill files are system-managed: synced on every boot (rewritten only
-# when content differs). Customise in your own skill folder instead.
-mkdir -p /home/agent/.pi/agent/skills/godot
-for f in SKILL.md export_presets.cfg.example; do
-    if ! cmp -s "$STUB/.pi/agent/skills/godot/$f" "/home/agent/.pi/agent/skills/godot/$f"; then
-        cp "$STUB/.pi/agent/skills/godot/$f" "/home/agent/.pi/agent/skills/godot/$f"
-        echo "Synced godot skill file: $f."
-    fi
+# System-managed skill files are synced on every boot (rewritten only when the
+# content differs), so image upgrades reach pre-existing home volumes.
+# Customise in your own skill folder instead.
+for skill in "$STUB"/.pi/agent/skills/*/; do
+    name=$(basename "$skill")
+    mkdir -p "/home/agent/.pi/agent/skills/$name"
+    for f in "$skill"*; do
+        target="/home/agent/.pi/agent/skills/$name/$(basename "$f")"
+        if ! cmp -s "$f" "$target"; then
+            cp "$f" "$target"
+            echo "Synced $name skill file: $(basename "$f")."
+        fi
+    done
 done
 
 # Make the system-wide export templates visible to the agent user, unless it

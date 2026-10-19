@@ -48,6 +48,10 @@ rust_version=$(curl -fsS https://static.rust-lang.org/dist/channel-rust-stable.t
 godot_version=$(curl -fsS https://api.github.com/repos/godotengine/godot/releases/latest \
 	| jq -r .tag_name | sed 's/-stable$//')
 
+# Latest published Playwright version (@playwright/test is kept in step with it)
+playwright_version=$(curl -fsS "https://registry.npmjs.org/playwright" \
+	| jq -r '."dist-tags".latest')
+
 # Target triple matching the architecture we are building for
 case "$(uname -m)" in
 	x86_64)  target_arch="x86_64-unknown-linux-gnu" ;;
@@ -55,8 +59,8 @@ case "$(uname -m)" in
 	*) echo "ERROR: unsupported architecture: $(uname -m)"; exit 1 ;;
 esac
 
-if [[ ! "$node_major" =~ ^[0-9]+$ ]] || [[ -z "$pi_version" || "$pi_version" == "null" ]] || [[ -z "$pi_web_version" || "$pi_web_version" == "null" ]] || [[ ! "$rust_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || [[ ! "$godot_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-	echo "ERROR: Unable to get the latest versions! (node_major=$node_major pi_version=$pi_version pi_web_version=$pi_web_version rust_version=$rust_version godot_version=$godot_version)"
+if [[ ! "$node_major" =~ ^[0-9]+$ ]] || [[ -z "$pi_version" || "$pi_version" == "null" ]] || [[ -z "$pi_web_version" || "$pi_web_version" == "null" ]] || [[ ! "$rust_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || [[ ! "$godot_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || [[ ! "$playwright_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+	echo "ERROR: Unable to get the latest versions! (node_major=$node_major pi_version=$pi_version pi_web_version=$pi_web_version rust_version=$rust_version godot_version=$godot_version playwright_version=$playwright_version)"
 	exit 1
 fi
 
@@ -65,9 +69,10 @@ echo "pi_version=$pi_version"
 echo "pi_web_version=$pi_web_version"
 echo "rust_version=$rust_version"
 echo "godot_version=$godot_version"
+echo "playwright_version=$playwright_version"
 echo "target_arch=$target_arch"
 
-tag="node-${node_major}-pi-${pi_version}-pi-web-${pi_web_version}-rust-${rust_version}-godot-${godot_version}"
+tag="node-${node_major}-pi-${pi_version}-pi-web-${pi_web_version}-rust-${rust_version}-godot-${godot_version}-pw-${playwright_version}"
 echo "tag=pi-agent:$tag"
 
 # Never re-push a same-tag image with different content: skip the build when
@@ -87,7 +92,7 @@ if [ "$BUILD_GHCR" == "1" ] && [ "$FORCE" != "1" ]; then
 			 -H "Accept: application/vnd.docker.distribution.manifest.v2+json, application/vnd.oci.image.manifest.v1+json" \
 			 "https://ghcr.io/v2/$owner/pi-agent/manifests/$tag"; then
 		echo "Tag ghcr.io/$owner/pi-agent:$tag already exists on ghcr.io, skipping build"
-		rm -f node_version.txt pi_version.txt pi_web_version.txt rust_version.txt godot_version.txt pi_agent_tag.txt
+		rm -f node_version.txt pi_version.txt pi_web_version.txt rust_version.txt godot_version.txt playwright_version.txt pi_agent_tag.txt
 		exit 0
 	fi
 fi
@@ -98,6 +103,7 @@ echo "$pi_version" > pi_version.txt
 echo "$pi_web_version" > pi_web_version.txt
 echo "$rust_version" > rust_version.txt
 echo "$godot_version" > godot_version.txt
+echo "$playwright_version" > playwright_version.txt
 echo "$tag" > pi_agent_tag.txt
 
 # --- Build one stage at a time, each tagged :latest ---
@@ -124,6 +130,10 @@ build_stage rust pi-agent-rust \
 build_stage godot pi-agent-godot \
 	--build-arg GODOT_VERSION="$godot_version" \
 	--build-arg TARGET_ARCH="$target_arch"
+
+# Built on top of godot (its apt browser deps have to be in the assembly base)
+build_stage playwright pi-agent-playwright \
+	--build-arg PLAYWRIGHT_VERSION="$playwright_version"
 
 build_stage apps pi-agent-apps \
 	--build-arg PI_VERSION="$pi_version" \
