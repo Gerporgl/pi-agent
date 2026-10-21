@@ -64,6 +64,8 @@ RUN cat /etc/apt/sources.list.d/ubuntu.sources && \
     libvulkan1 \
     python3-pip \
     python3-venv \
+    python3-pil \
+    imagemagick \
     pkg-config  \
     ninja-build \
     libssl-dev \
